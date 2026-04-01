@@ -11,8 +11,8 @@ Trains a Markov model on blog post text, saves it to `my_model.pkl`, and prints 
 sample of generated text.
 
 ```bash
-python demo_voice_generation.py 4        # order 4 
-python demo_voice_generation.py 2        # order 2
+python demo_voice_generation.py --order 4        # order 4 
+python demo_voice_generation.py --order 2        # order 2
 python demo_voice_generation.py          # order 1 (default)
 ```
 
