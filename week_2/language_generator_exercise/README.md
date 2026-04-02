@@ -33,8 +33,8 @@ Then open `markov_visualization.html` in any browser.
 ## Typical workflow
 
 ```bash
-# 1. Train at whatever order you want (I don't recommend going above about 4 on your local machine) 
-python demo_voice_generation.py 2
+# 1. Train at whatever order you want (I don't recommend going above about 10; you'll see why)  
+python demo_voice_generation.py --order 2
 
 # 2. Visualize that model
 python generate_markov_viz.py
