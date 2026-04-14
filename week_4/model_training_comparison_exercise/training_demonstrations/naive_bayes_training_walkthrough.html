@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Naive Bayes — How It Works</title>
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 24px;
+  font-family: Georgia, serif;
+  background: #161008;
+  color: #f2ede0;
+}
+h1 { font-size: 1.8rem; font-weight: bold; color: #d09030; margin: 0 0 4px; }
+#subtitle { color: #906820; font-style: italic; margin-bottom: 20px; }
+#step-title { font-size: 1.3rem; font-weight: bold; color: #d09030; margin-bottom: 12px; min-height: 1.6em; }
+#panels { display: flex; gap: 24px; align-items: flex-start; margin-bottom: 20px; }
+#explanation {
+  background: #201408; border: 1px solid #5a3810;
+  border-radius: 8px; padding: 16px 20px;
+  line-height: 1.7; margin-bottom: 20px; min-height: 110px;
+}
+#nav { display: flex; align-items: center; gap: 16px; }
+button {
+  background: #2a1a08; border: 1px solid #d09030;
+  color: #d09030; padding: 8px 20px;
+  border-radius: 6px; cursor: pointer; font-size: 1.1rem;
+}
+button:hover { background: #402010; }
+button:disabled { opacity: 0.3; cursor: default; }
+.dot {
+  width:10px; height:10px; border-radius:50%;
+  background:#3a2010; display:inline-block; margin:0 3px;
+  cursor:pointer; transition:background 0.2s;
+}
+.dot.active { background:#d09030; }
+#step-counter { color:#906820; font-size:0.9rem; margin-left:16px; }
+</style>
+</head>
+<body>
+<h1>Naive Bayes Classifier</h1>
+<div id="subtitle">Classification via Bayes' theorem and a clever independence assumption</div>
+<div id="step-title"></div>
+<div id="panels">
+  <svg id="scatter"   width="480" height="380" style="background:#1a1208;border-radius:8px;flex-shrink:0"></svg>
+  <svg id="distchart" width="340" height="380" style="background:#1a1208;border-radius:8px;flex-shrink:0"></svg>
+</div>
+<div id="explanation"></div>
+<div id="nav">
+  <button id="prev">&#8592;</button>
+  <div id="dots"></div>
+  <button id="next">&#8594;</button>
+  <span id="step-counter"></span>
+</div>
+
+<script>
+// ─── Dataset ──────────────────────────────────────────────────────────────────
+const BCOL='#4a9fd4', RCOL='#e05050', TCOL='#f0c040';
+const BGCOL='rgba(74,159,212,0.15)', RGCOL='rgba(224,80,80,0.15)';
+
+// Blue cluster: upper-left (small x1, large x2)
+const blue = [
+  {x1:1.3,x2:6.4},{x1:1.5,x2:7.8},{x1:2.1,x2:8.1},
+  {x1:2.2,x2:6.7},{x1:2.5,x2:7.5},{x1:1.8,x2:7.3},{x1:2.1,x2:6.8}
+];
+// Red cluster: lower-right (large x1, small x2)
+const red = [
+  {x1:5.2,x2:2.1},{x1:5.4,x2:3.5},{x1:6.1,x2:2.4},
+  {x1:6.2,x2:3.8},{x1:6.8,x2:2.9},{x1:5.9,x2:2.7},{x1:6.4,x2:3.1}
+];
+const testPt = {x1:3.5, x2:5.5};
+const nB=blue.length, nR=red.length, nTotal=nB+nR;
+
+// ─── Compute sufficient statistics ────────────────────────────────────────────
+function mean(arr, key) { return arr.reduce((s,p)=>s+p[key],0)/arr.length; }
+function std(arr, key) {
+  const m=mean(arr,key);
+  return Math.sqrt(arr.reduce((s,p)=>s+(p[key]-m)**2,0)/arr.length);
+}
+const bMu1=mean(blue,'x1'), bSd1=std(blue,'x1');
+const bMu2=mean(blue,'x2'), bSd2=std(blue,'x2');
+const rMu1=mean(red,'x1'),  rSd1=std(red,'x1');
+const rMu2=mean(red,'x2'),  rSd2=std(red,'x2');
+
+const pB=nB/nTotal, pR=nR/nTotal;
+
+function gaussPDF(x, mu, sigma) {
+  return (1/(sigma*Math.sqrt(2*Math.PI))) * Math.exp(-0.5*((x-mu)/sigma)**2);
+}
+
+// Likelihoods for test point
+const pX1gB = gaussPDF(testPt.x1, bMu1, bSd1);
+const pX2gB = gaussPDF(testPt.x2, bMu2, bSd2);
+const pX1gR = gaussPDF(testPt.x1, rMu1, rSd1);
+const pX2gR = gaussPDF(testPt.x2, rMu2, rSd2);
+
+const scoreB = pB * pX1gB * pX2gB;
+const scoreR = pR * pX1gR * pX2gR;
+const total  = scoreB + scoreR;
+const postB  = scoreB/total, postR = scoreR/total;
+
+// ─── SVG coordinate system (x1 in [0,9], x2 in [0,10]) ──────────────────────
+const SW=480, SH=380, SML=50, SMB=42, SMT=28, SMR=16;
+const SIW=SW-SML-SMR, SIH=SH-SMT-SMB;
+const sx = v => SML + (v/9)*SIW;
+const sy = v => SH-SMB - (v/10)*SIH;
+
+function el(tag, attrs={}, txt='') {
+  const e=document.createElementNS('http://www.w3.org/2000/svg',tag);
+  for (const [k,v] of Object.entries(attrs)) e.setAttribute(k,v);
+  if (txt) e.textContent=txt;
+  return e;
+}
+
+// ─── Draw Gaussian ellipse ────────────────────────────────────────────────────
+// For NB, features are independent → axis-aligned ellipse at k*sigma
+function drawEllipse(svg, mu1, sd1, mu2, sd2, col, kSigma=1, opacity=0.5) {
+  const rx = sd1*kSigma * (SIW/9);
+  const ry = sd2*kSigma * (SIH/10);
+  svg.appendChild(el('ellipse',{cx:sx(mu1),cy:sy(mu2),rx,ry,
+    fill:'none',stroke:col,'stroke-width':1.5,opacity,'stroke-dasharray':kSigma===1?'':'4,3'}));
+}
+
+// ─── Steps ────────────────────────────────────────────────────────────────────
+const steps = [
+  { showPoints:true, showTest:false, showEllipses:false, showDist:false,
+    title:"The Training Data",
+    html:`<p>We have 14 labelled examples in two-dimensional feature space:
+    <b style="color:${BCOL}">${nB} Blue</b> points (small x₁, large x₂) and
+    <b style="color:${RCOL}">${nR} Red</b> points (large x₁, small x₂).</p>
+    <p>Naive Bayes will learn a <em>probability model</em> for each class separately — no decision boundary
+    is explicitly fitted. At prediction time, we apply Bayes' theorem to ask which class
+    makes a new observation most likely.</p>` },
+
+  { showPoints:true, showTest:false, showEllipses:false, showDist:false,
+    title:"Step 1 — Class Priors",
+    html:`<p>First, we estimate the prior probability of each class from the training data:</p>
+    <p style="text-align:center">P(Blue) = ${nB}/${nTotal} = <b>${pB.toFixed(3)}</b> &nbsp;&nbsp;
+    P(Red) = ${nR}/${nTotal} = <b>${pR.toFixed(3)}</b></p>
+    <p>With a balanced dataset, both classes are equally likely a priori.
+    In practice, if one class is rare (e.g. fraud vs. legitimate transactions), the prior
+    captures that imbalance and prevents the model from always predicting the majority class.</p>` },
+
+  { showPoints:true, showTest:false, showEllipses:false, showDist:'blue',
+    title:"Step 2 — Blue Feature Distributions",
+    html:`<p>For the <b style="color:${BCOL}">Blue</b> class, we fit a Gaussian to each feature
+    using the Blue training examples only:</p>
+    <table style="width:100%;border-collapse:collapse;font-size:0.93em;margin-top:6px">
+      <tr style="color:#906820">
+        <th style="text-align:left;padding:3px 8px">Feature</th>
+        <th style="padding:3px 8px">Mean (μ)</th>
+        <th style="padding:3px 8px">Std Dev (σ)</th>
+      </tr>
+      <tr><td style="padding:3px 8px">x₁ (horizontal)</td>
+          <td style="text-align:center;padding:3px 8px">${bMu1.toFixed(3)}</td>
+          <td style="text-align:center;padding:3px 8px">${bSd1.toFixed(3)}</td></tr>
+      <tr><td style="padding:3px 8px">x₂ (vertical)</td>
+          <td style="text-align:center;padding:3px 8px">${bMu2.toFixed(3)}</td>
+          <td style="text-align:center;padding:3px 8px">${bSd2.toFixed(3)}</td></tr>
+    </table>
+    <p style="margin-top:8px">The right panel shows the Gaussian PDFs: <b style="color:${BCOL}">Blue x₁</b>
+    peaks near 2 and <b style="color:${BCOL}">Blue x₂</b> peaks near 7.</p>` },
+
+  { showPoints:true, showTest:false, showEllipses:false, showDist:'both',
+    title:"Step 3 — Red Feature Distributions",
+    html:`<p>Now we fit Gaussians to the <b style="color:${RCOL}">Red</b> class:</p>
+    <table style="width:100%;border-collapse:collapse;font-size:0.93em;margin-top:6px">
+      <tr style="color:#906820">
+        <th style="text-align:left;padding:3px 8px">Feature</th>
+        <th style="padding:3px 8px">Mean (μ)</th>
+        <th style="padding:3px 8px">Std Dev (σ)</th>
+      </tr>
+      <tr><td style="padding:3px 8px">x₁</td>
+          <td style="text-align:center;padding:3px 8px">${rMu1.toFixed(3)}</td>
+          <td style="text-align:center;padding:3px 8px">${rSd1.toFixed(3)}</td></tr>
+      <tr><td style="padding:3px 8px">x₂</td>
+          <td style="text-align:center;padding:3px 8px">${rMu2.toFixed(3)}</td>
+          <td style="text-align:center;padding:3px 8px">${rSd2.toFixed(3)}</td></tr>
+    </table>
+    <p style="margin-top:8px">Red x₁ peaks near 6 and Red x₂ peaks near 3 — far from the Blue distributions.
+    Clean class separation here.</p>` },
+
+  { showPoints:true, showTest:false, showEllipses:true, showDist:'both',
+    title:"Step 4 — Visualizing the Model",
+    html:`<p>The ellipses on the scatter plot show the <b>1σ and 2σ contours</b> of each class model.
+    Under the Naive Bayes assumption, features are independent, so the contours are always
+    <em>axis-aligned ellipses</em> (no rotation, regardless of the actual data correlation).</p>
+    <p>This is the <b>naïve</b> part: even if x₁ and x₂ are correlated within a class, we model them
+    as if they were independent. This is often wrong, but the classifier still works
+    surprisingly well in practice.</p>` },
+
+  { showPoints:true, showTest:true, showEllipses:true, showDist:'both',
+    title:"Step 5 — A New Point Arrives",
+    html:`<p>A new point at <b style="color:${TCOL}">(x₁=3.5, x₂=5.5)</b> needs classification.
+    It sits between the two clusters. We apply Bayes' theorem:</p>
+    <p style="text-align:center">P(class | x) ∝ P(class) × P(x₁ | class) × P(x₂ | class)</p>
+    <p>The "naïve" assumption lets us multiply the two per-feature probabilities.
+    We need to evaluate four Gaussian PDFs — one per (feature, class) combination.</p>` },
+
+  { showPoints:true, showTest:true, showEllipses:true, showDist:'blue_test',
+    title:"Step 6 — Likelihood Under Blue",
+    html:`<p>How likely is (3.5, 5.5) if we assume it came from the <b style="color:${BCOL}">Blue</b> class?</p>
+    <p style="font-family:monospace;font-size:0.88em;margin-left:1em">
+    P(x₁=3.5 | Blue) = N(3.5; μ=${bMu1.toFixed(2)}, σ=${bSd1.toFixed(2)}) = <b>${pX1gB.toExponential(3)}</b><br>
+    P(x₂=5.5 | Blue) = N(5.5; μ=${bMu2.toFixed(2)}, σ=${bSd2.toFixed(2)}) = <b>${pX2gB.toExponential(3)}</b></p>
+    <p>x₁=3.5 is far from Blue's mean of ${bMu1.toFixed(2)}, so its likelihood is small.
+    x₂=5.5 is also somewhat below Blue's mean of ${bMu2.toFixed(2)}, giving a modest probability.</p>` },
+
+  { showPoints:true, showTest:true, showEllipses:true, showDist:'red_test',
+    title:"Step 7 — Likelihood Under Red",
+    html:`<p>How likely is (3.5, 5.5) if we assume it came from the <b style="color:${RCOL}">Red</b> class?</p>
+    <p style="font-family:monospace;font-size:0.88em;margin-left:1em">
+    P(x₁=3.5 | Red) = N(3.5; μ=${rMu1.toFixed(2)}, σ=${rSd1.toFixed(2)}) = <b>${pX1gR.toExponential(3)}</b><br>
+    P(x₂=5.5 | Red) = N(5.5; μ=${rMu2.toFixed(2)}, σ=${rSd2.toFixed(2)}) = <b>${pX2gR.toExponential(3)}</b></p>
+    <p>x₁=3.5 is far from Red's mean of ${rMu1.toFixed(2)}, and x₂=5.5 is far above Red's mean
+    of ${rMu2.toFixed(2)}, so both are tiny — even smaller than under Blue.</p>` },
+
+  { showPoints:true, showTest:true, showEllipses:true, showDist:'both',
+    title:"Step 8 — Apply Bayes' Rule",
+    html:`<p>Multiply prior × likelihoods for each class:</p>
+    <p style="font-family:monospace;font-size:0.88em;margin-left:1em">
+    score(Blue) = ${pB.toFixed(2)} × ${pX1gB.toExponential(2)} × ${pX2gB.toExponential(2)} = <b>${scoreB.toExponential(3)}</b><br>
+    score(Red)  = ${pR.toFixed(2)} × ${pX1gR.toExponential(2)} × ${pX2gR.toExponential(2)} = <b>${scoreR.toExponential(3)}</b></p>
+    <p>Normalizing to get proper probabilities (dividing by the sum):<br>
+    P(Blue | x) = <b>${(postB*100).toFixed(1)}%</b> &nbsp;&nbsp;
+    P(Red  | x) = <b>${(postR*100).toFixed(1)}%</b></p>
+    <p>Prediction: <b style="color:${BCOL}">Blue</b>, with ${(postB*100).toFixed(1)}% probability.
+    The score ratio is ${(scoreB/scoreR).toFixed(0)}:1 in favor of Blue.</p>` }
+];
+
+// ─── Scatter render ────────────────────────────────────────────────────────────
+function renderScatter(si) {
+  const s=steps[si];
+  const svg=document.getElementById('scatter');
+  svg.innerHTML='';
+
+  // Grid
+  for (let x=0;x<=9;x++) {
+    svg.appendChild(el('line',{x1:sx(x),y1:sy(0),x2:sx(x),y2:sy(10),stroke:'#262010','stroke-width':0.5,'stroke-dasharray':'2,4'}));
+    if (x%2===0) svg.appendChild(el('text',{x:sx(x),y:SH-SMB+16,'text-anchor':'middle',fill:'#806030','font-size':11},String(x)));
+  }
+  for (let y=0;y<=10;y+=2) {
+    svg.appendChild(el('line',{x1:sx(0),y1:sy(y),x2:sx(9),y2:sy(y),stroke:'#262010','stroke-width':0.5,'stroke-dasharray':'2,4'}));
+    svg.appendChild(el('text',{x:SML-8,y:sy(y)+4,'text-anchor':'end',fill:'#806030','font-size':11},String(y)));
+  }
+  svg.appendChild(el('line',{x1:sx(0),y1:sy(0),x2:sx(9),y2:sy(0),stroke:'#4a3010','stroke-width':1.5}));
+  svg.appendChild(el('line',{x1:sx(0),y1:sy(0),x2:sx(0),y2:sy(10),stroke:'#4a3010','stroke-width':1.5}));
+  svg.appendChild(el('text',{x:SW/2,y:SH-4,'text-anchor':'middle',fill:'#806030','font-size':12},'x₁'));
+  svg.appendChild(el('text',{x:11,y:SH/2,'text-anchor':'middle',fill:'#806030','font-size':12,transform:`rotate(-90 11 ${SH/2})`},'x₂'));
+  svg.appendChild(el('text',{x:SW/2,y:18,'text-anchor':'middle',fill:'#906820','font-size':11,'font-style':'italic'},'Feature Space'));
+
+  // Gaussian ellipses
+  if (s.showEllipses) {
+    drawEllipse(svg, bMu1,bSd1,bMu2,bSd2, BCOL, 1, 0.6);
+    drawEllipse(svg, bMu1,bSd1,bMu2,bSd2, BCOL, 2, 0.3);
+    drawEllipse(svg, rMu1,rSd1,rMu2,rSd2, RCOL, 1, 0.6);
+    drawEllipse(svg, rMu1,rSd1,rMu2,rSd2, RCOL, 2, 0.3);
+    // Mean markers
+    svg.appendChild(el('circle',{cx:sx(bMu1),cy:sy(bMu2),r:5,fill:BCOL,opacity:0.9}));
+    svg.appendChild(el('circle',{cx:sx(rMu1),cy:sy(rMu2),r:5,fill:RCOL,opacity:0.9}));
+  }
+
+  // Training points
+  if (s.showPoints) {
+    blue.forEach(p=>{
+      svg.appendChild(el('circle',{cx:sx(p.x1),cy:sy(p.x2),r:7,fill:BCOL,stroke:'#161008','stroke-width':1}));
+    });
+    red.forEach(p=>{
+      svg.appendChild(el('circle',{cx:sx(p.x1),cy:sy(p.x2),r:7,fill:RCOL,stroke:'#161008','stroke-width':1}));
+    });
+  }
+
+  // Test point
+  if (s.showTest) {
+    const tx=sx(testPt.x1), ty=sy(testPt.x2);
+    const pts=[];
+    for (let i=0;i<10;i++) {
+      const a=(i*Math.PI/5)-Math.PI/2, r=i%2===0?12:5;
+      pts.push(`${tx+r*Math.cos(a)},${ty+r*Math.sin(a)}`);
+    }
+    svg.appendChild(el('polygon',{points:pts.join(' '),fill:TCOL,stroke:'#161008','stroke-width':1}));
+    svg.appendChild(el('text',{x:tx+16,y:ty-10,fill:TCOL,'font-size':11,'font-weight':'bold'},'test (3.5,5.5)'));
+  }
+}
+
+// ─── Distribution chart render ─────────────────────────────────────────────────
+// Two side-by-side Gaussian PDF plots: x1 (top half), x2 (bottom half)
+function renderDist(si) {
+  const s=steps[si];
+  const svg=document.getElementById('distchart');
+  svg.innerHTML='';
+
+  if (!s.showDist) {
+    svg.appendChild(el('text',{x:170,y:190,'text-anchor':'middle',fill:'#3a2808','font-size':13},
+      '← Feature distributions'));
+    return;
+  }
+
+  const DW=340, DH=380;
+  // Axes for x1 (top plot): feature range [0,9], pdf range [0,0.9]
+  const x1Range=[0,9], x2Range=[0,10];
+  const pdfMaxX1=0.8, pdfMaxX2=0.7;
+  const P=28; // padding
+  const ph=(DH-40)/2 - 10; // plot height
+
+  function drawPDFPanel(yOffset, featureRange, pdfMax, muB, sdB, muR, sdR, label, testVal, showTest) {
+    const bx=v => P + (v-featureRange[0])/(featureRange[1]-featureRange[0])*(DW-2*P);
+    const by=v => yOffset+ph - (v/pdfMax)*ph;
+
+    // Panel background
+    svg.appendChild(el('rect',{x:P,y:yOffset,width:DW-2*P,height:ph,fill:'#201408',rx:4}));
+
+    // Axes
+    svg.appendChild(el('line',{x1:bx(featureRange[0]),y1:by(0),x2:bx(featureRange[1]),y2:by(0),stroke:'#4a3010','stroke-width':1.5}));
+
+    // Tick labels
+    for (let v=featureRange[0];v<=featureRange[1];v+=2) {
+      svg.appendChild(el('text',{x:bx(v),y:yOffset+ph+14,'text-anchor':'middle',fill:'#806030','font-size':10},String(v)));
+    }
+    svg.appendChild(el('text',{x:DW/2,y:yOffset+ph+26,'text-anchor':'middle',fill:'#906820','font-size':10,'font-style':'italic'},label));
+
+    // Gaussian curves
+    const drawCurve = (mu, sd, col, show) => {
+      if (!show) return;
+      const pts=[];
+      for (let t=0;t<=200;t++) {
+        const x=featureRange[0]+(t/200)*(featureRange[1]-featureRange[0]);
+        const pdf=gaussPDF(x,mu,sd);
+        pts.push(`${bx(x)},${by(Math.min(pdf,pdfMax))}`);
+      }
+      svg.appendChild(el('polyline',{points:pts.join(' '),fill:'none',stroke:col,'stroke-width':2}));
+      // Mean line
+      svg.appendChild(el('line',{x1:bx(mu),y1:by(0),x2:bx(mu),y2:by(gaussPDF(mu,mu,sd)),
+        stroke:col,'stroke-width':1,'stroke-dasharray':'3,3',opacity:0.6}));
+    };
+
+    const showB = s.showDist==='blue'||s.showDist==='both'||s.showDist==='blue_test'||s.showDist==='red_test';
+    const showR = s.showDist==='both'||s.showDist==='red_test';
+    drawCurve(muB,sdB,BCOL,showB);
+    drawCurve(muR,sdR,RCOL,showR);
+
+    // Test point vertical line
+    if (showTest && s.showTest) {
+      svg.appendChild(el('line',{x1:bx(testVal),y1:yOffset,x2:bx(testVal),y2:yOffset+ph,
+        stroke:TCOL,'stroke-width':1.5,'stroke-dasharray':'4,3'}));
+      svg.appendChild(el('text',{x:bx(testVal)+3,y:yOffset+10,fill:TCOL,'font-size':9},`x=${testVal}`));
+    }
+  }
+
+  // Title
+  svg.appendChild(el('text',{x:DW/2,y:16,'text-anchor':'middle',fill:'#906820','font-size':11,'font-style':'italic'},
+    'Per-class Gaussian feature distributions'));
+
+  drawPDFPanel(24, x1Range, pdfMaxX1, bMu1,bSd1, rMu1,rSd1, 'x₁', testPt.x1, true);
+  drawPDFPanel(24+ph+36, x2Range, pdfMaxX2, bMu2,bSd2, rMu2,rSd2, 'x₂', testPt.x2, true);
+
+  // Legend
+  const legendY = DH-14;
+  svg.appendChild(el('rect',{x:P,y:legendY-10,width:12,height:12,fill:BCOL,rx:2}));
+  svg.appendChild(el('text',{x:P+16,y:legendY,fill:BCOL,'font-size':10},'Blue'));
+  svg.appendChild(el('rect',{x:P+50,y:legendY-10,width:12,height:12,fill:RCOL,rx:2}));
+  svg.appendChild(el('text',{x:P+66,y:legendY,fill:RCOL,'font-size':10},'Red'));
+  if (s.showTest) {
+    svg.appendChild(el('line',{x1:P+105,y1:legendY-5,x2:P+117,y2:legendY-5,stroke:TCOL,'stroke-width':1.5,'stroke-dasharray':'4,3'}));
+    svg.appendChild(el('text',{x:P+121,y:legendY,fill:TCOL,'font-size':10},'test point'}));
+  }
+}
+
+// ─── Navigation ───────────────────────────────────────────────────────────────
+let cur=0;
+function updateNav() {
+  const dotsEl=document.getElementById('dots');
+  dotsEl.innerHTML='';
+  steps.forEach((_,i)=>{
+    const d=document.createElement('span');
+    d.className='dot'+(i===cur?' active':'');
+    d.addEventListener('click',()=>{cur=i;render();});
+    dotsEl.appendChild(d);
+  });
+  document.getElementById('prev').disabled=cur===0;
+  document.getElementById('next').disabled=cur===steps.length-1;
+  document.getElementById('step-counter').textContent=`${cur+1} / ${steps.length}`;
+}
+function render() {
+  const s=steps[cur];
+  document.getElementById('step-title').textContent=s.title;
+  document.getElementById('explanation').innerHTML=s.html;
+  renderScatter(cur);
+  renderDist(cur);
+  updateNav();
+}
+document.getElementById('prev').addEventListener('click',()=>{if(cur>0){cur--;render();}});
+document.getElementById('next').addEventListener('click',()=>{if(cur<steps.length-1){cur++;render();}});
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowLeft'&&cur>0){cur--;render();}
+  if(e.key==='ArrowRight'&&cur<steps.length-1){cur++;render();}
+});
+render();
+</script>
+</body>
+</html>

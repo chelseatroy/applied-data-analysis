@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>k-Nearest Neighbors — How It Works</title>
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 24px;
+  font-family: Georgia, serif;
+  background: #1a0a08;
+  color: #f0e8df;
+}
+h1 { font-size: 1.8rem; font-weight: bold; color: #e07050; margin: 0 0 4px; }
+#subtitle { color: #a06848; font-style: italic; margin-bottom: 20px; }
+#step-title { font-size: 1.3rem; font-weight: bold; color: #e07050; margin-bottom: 12px; min-height: 1.6em; }
+#panels { display: flex; gap: 24px; align-items: flex-start; margin-bottom: 20px; }
+#explanation {
+  background: #2a1208; border: 1px solid #5a2818;
+  border-radius: 8px; padding: 16px 20px;
+  line-height: 1.7; margin-bottom: 20px; min-height: 110px;
+}
+#explanation ul { margin: 6px 0; padding-left: 20px; }
+#explanation li { margin: 4px 0; }
+#nav { display: flex; align-items: center; gap: 16px; }
+button {
+  background: #3a1510; border: 1px solid #e07050;
+  color: #e07050; padding: 8px 20px;
+  border-radius: 6px; cursor: pointer; font-size: 1.1rem;
+}
+button:hover { background: #5a2520; }
+button:disabled { opacity: 0.3; cursor: default; }
+.dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #5a2018; display: inline-block; margin: 0 3px;
+  cursor: pointer; transition: background 0.2s;
+}
+.dot.active { background: #e07050; }
+#step-counter { color: #a06848; font-size: 0.9rem; margin-left: 16px; }
+</style>
+</head>
+<body>
+<h1>k-Nearest Neighbors</h1>
+<div id="subtitle">A classifier that learns by remembering</div>
+<div id="step-title"></div>
+<div id="panels">
+  <svg id="scatter"  width="480" height="380" style="background:#200e08;border-radius:8px;flex-shrink:0"></svg>
+  <svg id="barchart" width="340" height="380" style="background:#200e08;border-radius:8px;flex-shrink:0"></svg>
+</div>
+<div id="explanation"></div>
+<div id="nav">
+  <button id="prev">&#8592;</button>
+  <div id="dots"></div>
+  <button id="next">&#8594;</button>
+  <span id="step-counter"></span>
+</div>
+
+<script>
+// ─── Dataset ──────────────────────────────────────────────────────────────────
+const B = 'Blue', R = 'Red';
+const BCOL = '#4a9fd4', RCOL = '#e05050', TCOL = '#f0c040';
+
+const train = [
+  {x:3,y:4,cls:B},{x:3,y:5,cls:B},{x:2,y:3,cls:B},{x:1,y:4,cls:B},
+  {x:2,y:6,cls:B},{x:3,y:7,cls:B},{x:1,y:5,cls:B},
+  {x:5,y:3,cls:R},{x:6,y:4,cls:R},{x:5,y:2,cls:R},{x:4,y:2,cls:R},
+  {x:6,y:3,cls:R},{x:7,y:3,cls:R},{x:6,y:5,cls:R}
+];
+const test = {x:4, y:4};
+
+train.forEach(p => { p.dist = Math.sqrt((p.x-test.x)**2 + (p.y-test.y)**2); });
+const sorted = [...train].sort((a,b) => a.dist - b.dist);
+
+// ─── Scatter SVG coords ────────────────────────────────────────────────────────
+const SW=480, SH=380, SM=46;
+const sx = v => SM + v/9 * (SW-2*SM);
+const sy = v => SH - SM - v/9 * (SH-2*SM);
+
+// ─── Bar chart SVG ─────────────────────────────────────────────────────────────
+const BW=340, BH=380, BML=96, BMT=28, BMR=16, BMB=28;
+const BIW = BW-BML-BMR, BIH = BH-BMT-BMB;
+const N = train.length;
+const BAR_H = Math.floor((BIH - (N-1)*3) / N);
+
+// ─── Steps ────────────────────────────────────────────────────────────────────
+const steps = [
+  { k:0, showTest:false, showLines:false,
+    title: "The Training Data",
+    html: `<p>We have 14 labelled training examples in 2D feature space.
+    <b style="color:${BCOL}">Blue</b> points cluster in the upper-left;
+    <b style="color:${RCOL}">Red</b> points cluster in the lower-right.</p>
+    <p>k-Nearest Neighbors stores every one of these examples directly.
+    There is <b>no fitting step</b>, no loss function, no gradient descent.
+    "Training" is simply memorization of the dataset.</p>` },
+
+  { k:0, showTest:true, showLines:false,
+    title: "A New Point to Classify",
+    html: `<p>A new observation arrives at
+    <b style="color:${TCOL}">(4, 4)</b> — shown as a gold star.
+    We need to predict whether it is Blue or Red.</p>
+    <p>k-NN's strategy: find the <em>k</em> nearest training points and let them
+    vote. The majority class wins. The only design choice is k.</p>` },
+
+  { k:0, showTest:true, showLines:true,
+    title: "Step 1 — Measure All Distances",
+    html: `<p>We compute the Euclidean distance from <b style="color:${TCOL}">(4,4)</b>
+    to every training point:</p>
+    <p style="font-family:monospace;margin-left:1em;font-size:0.95em">
+    d(a,b) = √[(x_a − x_b)² + (y_a − y_b)²]</p>
+    <p>The bar chart on the right ranks all 14 neighbors by distance, shortest first.
+    Bar color encodes class. This ranking is everything k-NN needs.</p>` },
+
+  { k:1, showTest:true, showLines:false,
+    title: "k = 1 — One Nearest Neighbor",
+    html: `<p>With <b>k = 1</b> we use only the single closest point:
+    <b style="color:${BCOL}">(3, 4) Blue</b> at distance <b>1.000</b>.</p>
+    <p>Prediction: <b style="color:${BCOL}">Blue</b>.</p>
+    <p>k = 1 is maximally flexible. Every training point carves out its own
+    territory. This leads to a jagged, irregular decision boundary that is
+    highly sensitive to individual points and noise —
+    <b>low bias, high variance</b>.</p>` },
+
+  { k:3, showTest:true, showLines:false,
+    title: "k = 3 — Three Neighbors",
+    html: `<p>With <b>k = 3</b>, the three nearest points vote:
+    <b style="color:${BCOL}">(3,4)</b>,
+    <b style="color:${BCOL}">(3,5)</b>, and
+    <b style="color:${RCOL}">(5,3)</b>.</p>
+    <p>Tally: <b style="color:${BCOL}">2 Blue</b> vs
+    <b style="color:${RCOL}">1 Red</b> → Prediction:
+    <b style="color:${BCOL}">Blue</b>.</p>
+    <p>Majority voting smooths out the influence of any single unusual neighbor.
+    A genuine outlier is outvoted by its surroundings.</p>` },
+
+  { k:5, showTest:true, showLines:false,
+    title: "k = 5 — Five Neighbors",
+    html: `<p>With <b>k = 5</b>, we include two more points:
+    <b style="color:${RCOL}">(4,2) Red</b> and
+    <b style="color:${RCOL}">(6,4) Red</b>.</p>
+    <p>Tally now: <b style="color:${BCOL}">2 Blue</b> vs
+    <b style="color:${RCOL}">3 Red</b> → Prediction flips to
+    <b style="color:${RCOL}">Red</b>.</p>
+    <p>The prediction changed just by widening the neighborhood. This sensitivity
+    to k is exactly why we choose k by cross-validation on held-out data.</p>` },
+
+  { k:7, showTest:true, showLines:false,
+    title: "k = 7 — Seven Neighbors",
+    html: `<p>With <b>k = 7</b>, we add
+    <b style="color:${BCOL}">(2,3) Blue</b> and
+    <b style="color:${RCOL}">(5,2) Red</b>.</p>
+    <p>Tally: <b style="color:${BCOL}">3 Blue</b> vs
+    <b style="color:${RCOL}">4 Red</b> → Still
+    <b style="color:${RCOL}">Red</b>.</p>
+    <p>Larger k widens each point's neighborhood, smoothing the boundary but
+    potentially ignoring local clusters. This is <b>higher bias, lower variance</b>
+    than small k.</p>` },
+
+  { k:0, showTest:false, showLines:false,
+    title: "k-NN: No Training, All Inference",
+    html: `<p>k-NN is a <b>lazy learner</b> — all computation happens at prediction
+    time, not training time. The model is just the stored dataset.</p>
+    <table style="width:100%;border-collapse:collapse;font-size:0.93em;margin-top:8px">
+      <tr style="color:#a06848">
+        <th style="text-align:left;padding:4px 8px">k</th>
+        <th style="text-align:left;padding:4px 8px">Boundary</th>
+        <th style="text-align:left;padding:4px 8px">Bias</th>
+        <th style="text-align:left;padding:4px 8px">Variance</th>
+      </tr>
+      <tr><td style="padding:4px 8px">Small (1–3)</td><td style="padding:4px 8px">Jagged</td>
+          <td style="padding:4px 8px">Low</td><td style="padding:4px 8px">High</td></tr>
+      <tr><td style="padding:4px 8px">Large (10+)</td><td style="padding:4px 8px">Smooth</td>
+          <td style="padding:4px 8px">High</td><td style="padding:4px 8px">Low</td></tr>
+      <tr><td style="padding:4px 8px">Best k</td><td colspan="3" style="padding:4px 8px">Chosen by cross-validation</td></tr>
+    </table>
+    <p style="margin-top:8px"><b>Cost:</b> O(n·d) per prediction — every query scans all n training points
+    across d dimensions. For large n, k-d trees or approximate NN methods help.</p>` }
+];
+
+// ─── SVG helpers ──────────────────────────────────────────────────────────────
+function el(tag, attrs={}, txt='') {
+  const e = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [k,v] of Object.entries(attrs)) e.setAttribute(k,v);
+  if (txt) e.textContent = txt;
+  return e;
+}
+
+// ─── Scatter render ────────────────────────────────────────────────────────────
+function renderScatter(si) {
+  const s = steps[si];
+  const svg = document.getElementById('scatter');
+  svg.innerHTML = '';
+
+  // Grid
+  for (let i=0;i<=9;i++) {
+    if (i>0&&i<9) {
+      svg.appendChild(el('line',{x1:sx(i),y1:sy(0),x2:sx(i),y2:sy(9),stroke:'#3a1808','stroke-width':0.5,'stroke-dasharray':'2,4'}));
+      svg.appendChild(el('line',{x1:sx(0),y1:sy(i),x2:sx(9),y2:sy(i),stroke:'#3a1808','stroke-width':0.5,'stroke-dasharray':'2,4'}));
+    }
+    if (i%2===0) {
+      svg.appendChild(el('text',{x:sx(i),y:sy(0)+16,'text-anchor':'middle',fill:'#806050','font-size':11},String(i)));
+      if (i>0) svg.appendChild(el('text',{x:sx(0)-12,y:sy(i)+4,'text-anchor':'middle',fill:'#806050','font-size':11},String(i)));
+    }
+  }
+  // Axes
+  svg.appendChild(el('line',{x1:sx(0),y1:sy(0),x2:sx(9),y2:sy(0),stroke:'#6a3020','stroke-width':1}));
+  svg.appendChild(el('line',{x1:sx(0),y1:sy(0),x2:sx(0),y2:sy(9),stroke:'#6a3020','stroke-width':1}));
+  svg.appendChild(el('text',{x:SW/2,y:SH-4,'text-anchor':'middle',fill:'#806050','font-size':12},'x₁'));
+  svg.appendChild(el('text',{x:11,y:SH/2,'text-anchor':'middle',fill:'#806050','font-size':12,transform:`rotate(-90 11 ${SH/2})`},'x₂'));
+  svg.appendChild(el('text',{x:SW/2,y:16,'text-anchor':'middle',fill:'#a06848','font-size':11,'font-style':'italic'},'Feature Space'));
+
+  // Distance lines
+  if (s.showLines) {
+    train.forEach(p => {
+      const col = p.cls===B ? BCOL : RCOL;
+      svg.appendChild(el('line',{x1:sx(test.x),y1:sy(test.y),x2:sx(p.x),y2:sy(p.y),
+        stroke:col,'stroke-width':1,'stroke-dasharray':'3,4',opacity:0.45}));
+    });
+  }
+
+  // Highlight rings for k neighbors
+  if (s.k>0) {
+    sorted.slice(0,s.k).forEach(p => {
+      svg.appendChild(el('circle',{cx:sx(p.x),cy:sy(p.y),r:14,fill:'none',stroke:TCOL,'stroke-width':2.5,opacity:0.85}));
+    });
+  }
+
+  // Training points
+  train.forEach(p => {
+    const col = p.cls===B ? BCOL : RCOL;
+    const inK = s.k>0 && sorted.slice(0,s.k).includes(p);
+    const opacity = (s.k>0 && !inK) ? 0.25 : 1.0;
+    svg.appendChild(el('circle',{cx:sx(p.x),cy:sy(p.y),r:7,fill:col,opacity,stroke:'#1a0a08','stroke-width':1}));
+  });
+
+  // Test point star
+  if (s.showTest || s.showLines) {
+    const tx=sx(test.x), ty=sy(test.y);
+    const pts=[];
+    for (let i=0;i<10;i++) {
+      const a=(i*Math.PI/5)-Math.PI/2, r=i%2===0?12:5;
+      pts.push(`${tx+r*Math.cos(a)},${ty+r*Math.sin(a)}`);
+    }
+    svg.appendChild(el('polygon',{points:pts.join(' '),fill:TCOL,stroke:'#1a0a08','stroke-width':1}));
+    svg.appendChild(el('text',{x:tx+16,y:ty-10,fill:TCOL,'font-size':11,'font-weight':'bold'},'test (4,4)'));
+  }
+}
+
+// ─── Bar chart render ─────────────────────────────────────────────────────────
+function renderBar(si) {
+  const s = steps[si];
+  const svg = document.getElementById('barchart');
+  svg.innerHTML = '';
+
+  svg.appendChild(el('text',{x:BW/2,y:18,'text-anchor':'middle',fill:'#a06848','font-size':11,'font-style':'italic'},
+    'Neighbors sorted by distance from (4,4)'));
+
+  if (!s.showLines && s.k===0 && !s.showTest) {
+    svg.appendChild(el('text',{x:BW/2,y:BH/2,'text-anchor':'middle',fill:'#5a2818','font-size':13},
+      '← Distances shown here'));
+    return;
+  }
+
+  const maxD = sorted[N-1].dist * 1.05;
+  const dScale = d => BML + d/maxD * BIW;
+
+  sorted.forEach((p,i) => {
+    const y = BMT + i*(BAR_H+3);
+    const col = p.cls===B ? BCOL : RCOL;
+    const inK = s.k>0 ? i<s.k : true;
+    const opacity = (s.k>0 && !inK) ? 0.2 : 1.0;
+    const barW = Math.max(dScale(p.dist)-BML, 2);
+
+    svg.appendChild(el('rect',{x:BML,y,width:barW,height:BAR_H,fill:col,opacity}));
+    svg.appendChild(el('text',{x:BML-4,y:y+BAR_H-2,'text-anchor':'end',
+      fill:(inK)?'#f0e8df':'#5a3828','font-size':9.5},
+      `#${i+1} (${p.x},${p.y})`));
+    svg.appendChild(el('text',{x:BML+barW+4,y:y+BAR_H-2,
+      fill:(inK)?col:'#5a3828','font-size':9},
+      `${p.dist.toFixed(3)}`));
+  });
+
+  // k cutoff line
+  if (s.k>0) {
+    const cutY = BMT + s.k*(BAR_H+3) - 1.5;
+    svg.appendChild(el('line',{x1:BML-12,y1:cutY,x2:BW-BMR,y2:cutY,
+      stroke:TCOL,'stroke-width':1.5,'stroke-dasharray':'5,3'}));
+
+    // Vote tally
+    let nb=0,nr=0;
+    sorted.slice(0,s.k).forEach(p=>p.cls===B?nb++:nr++);
+    const winner = nb>nr?B:R;
+    const wcol = winner===B?BCOL:RCOL;
+    svg.appendChild(el('text',{x:BW/2,y:BH-8,'text-anchor':'middle',fill:wcol,'font-size':12,'font-weight':'bold'},
+      `k=${s.k}: ${nb}B vs ${nr}R → ${winner}`));
+  }
+}
+
+// ─── Navigation ───────────────────────────────────────────────────────────────
+let cur = 0;
+function updateNav() {
+  const dotsEl = document.getElementById('dots');
+  dotsEl.innerHTML='';
+  steps.forEach((_,i)=>{
+    const d=document.createElement('span');
+    d.className='dot'+(i===cur?' active':'');
+    d.addEventListener('click',()=>{cur=i;render();});
+    dotsEl.appendChild(d);
+  });
+  document.getElementById('prev').disabled = cur===0;
+  document.getElementById('next').disabled = cur===steps.length-1;
+  document.getElementById('step-counter').textContent=`${cur+1} / ${steps.length}`;
+}
+
+function render() {
+  const s=steps[cur];
+  document.getElementById('step-title').textContent = s.title;
+  document.getElementById('explanation').innerHTML = s.html;
+  renderScatter(cur);
+  renderBar(cur);
+  updateNav();
+}
+
+document.getElementById('prev').addEventListener('click',()=>{if(cur>0){cur--;render();}});
+document.getElementById('next').addEventListener('click',()=>{if(cur<steps.length-1){cur++;render();}});
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowLeft'&&cur>0){cur--;render();}
+  if(e.key==='ArrowRight'&&cur<steps.length-1){cur++;render();}
+});
+render();
+</script>
+</body>
+</html>

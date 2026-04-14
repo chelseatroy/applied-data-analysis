@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How a Decision Tree Learns — Step by Step</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, sans-serif;
+  background: #08141e;
+  color: #cce0ec;
+  min-height: 100vh;
+}
+
+header {
+  background: linear-gradient(135deg, #1b6b8a, #0d4860);
+  color: white;
+  padding: 18px 36px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+}
+header h1 { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.3px; }
+#step-counter {
+  background: rgba(255,255,255,0.18);
+  padding: 5px 16px;
+  border-radius: 20px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.content {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 20px 24px 32px;
+}
+
+.main-row {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+  align-items: stretch;
+}
+
+.panel {
+  background: #0e2030;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+  overflow: hidden;
+}
+.panel-header {
+  background: #0c2838;
+  border-bottom: 1px solid #1a4060;
+  padding: 10px 18px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #5a9ab8;
+}
+
+#plot-panel { flex: 0 0 420px; }
+#plot-panel svg { display: block; }
+
+#explain-panel { flex: 1; display: flex; flex-direction: column; }
+#explain-content { padding: 18px 22px; flex: 1; }
+#step-title {
+  font-size: 1.18rem;
+  font-weight: 700;
+  color: #3db4d4;
+  margin-bottom: 13px;
+  line-height: 1.3;
+}
+#step-body { font-size: 0.93rem; line-height: 1.75; color: #a8cce0; }
+#step-body p { margin-bottom: 11px; }
+#step-body ul, #step-body ol { margin: 6px 0 11px 22px; }
+#step-body li { margin-bottom: 3px; }
+
+.math-block {
+  background: #0c2030;
+  border-left: 3px solid #1b6b8a;
+  padding: 11px 15px;
+  margin: 11px 0;
+  font-family: 'Menlo', 'Courier New', monospace;
+  font-size: 0.85rem;
+  line-height: 1.85;
+  border-radius: 0 6px 6px 0;
+  color: #90c8e0;
+}
+.math-block sub { font-size: 0.75em; }
+.good { color: #4ad890; font-weight: 700; }
+.highlight-val { color: #3db4d4; font-weight: 700; }
+
+.callout {
+  background: #0c2838;
+  border-radius: 8px;
+  padding: 9px 14px;
+  margin-top: 10px;
+  font-size: 0.88rem;
+  color: #7ac0d8;
+  line-height: 1.6;
+}
+
+.tag-b {
+  display: inline-block; background: #3b82f6; color: white;
+  padding: 1px 7px; border-radius: 4px; font-size: 0.8rem; font-weight: 700;
+}
+.tag-r {
+  display: inline-block; background: #e05252; color: white;
+  padding: 1px 7px; border-radius: 4px; font-size: 0.8rem; font-weight: 700;
+}
+
+#tree-panel { margin-bottom: 20px; }
+#tree-panel svg { display: block; width: 100%; }
+
+.nav-bar {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  padding: 4px 0 16px;
+}
+.nav-bar button {
+  background: #1b6b8a; color: white;
+  border: none; padding: 11px 30px;
+  font-size: 0.97rem; font-weight: 600;
+  border-radius: 8px; cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  letter-spacing: 0.02em;
+}
+.nav-bar button:hover { background: #155978; transform: translateY(-1px); }
+.nav-bar button:active { transform: translateY(0); }
+.nav-bar button:disabled { background: #1a3848; cursor: default; transform: none; }
+
+.dots { display: flex; gap: 7px; align-items: center; }
+.dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: #1a3848; transition: background 0.2s;
+}
+.dot.active { background: #1b6b8a; transform: scale(1.3); }
+.dot.done   { background: #4aaa7a; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>How a Decision Tree Learns — Step by Step</h1>
+  <div id="step-counter">Step 1 of 10</div>
+</header>
+
+<div class="content">
+  <div class="main-row">
+
+    <div class="panel" id="plot-panel">
+      <div class="panel-header">Feature Space</div>
+      <svg id="scatter" width="420" height="415"></svg>
+    </div>
+
+    <div class="panel" id="explain-panel">
+      <div class="panel-header">What the Algorithm Is Doing</div>
+      <div id="explain-content">
+        <div id="step-title"></div>
+        <div id="step-body"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="panel" id="tree-panel">
+    <div class="panel-header">Decision Tree (Growing)</div>
+    <svg id="tree" viewBox="0 0 960 290" height="290"></svg>
+  </div>
+
+  <div class="nav-bar">
+    <button id="prev-btn" onclick="changeStep(-1)" disabled>← Previous</button>
+    <div class="dots" id="dots"></div>
+    <button id="next-btn" onclick="changeStep(1)">Next →</button>
+  </div>
+</div>
+
+<script>
+// ─── Data ────────────────────────────────────────────────────────────────────
+
+const PTS = [
+  {id:1,  x1:1, x2:6, cls:'blue'},
+  {id:2,  x1:2, x2:7, cls:'blue'},
+  {id:3,  x1:1, x2:4, cls:'blue'},
+  {id:4,  x1:3, x2:5, cls:'blue'},
+  {id:5,  x1:2, x2:8, cls:'blue'},
+  {id:6,  x1:5, x2:3, cls:'red'},
+  {id:7,  x1:6, x2:2, cls:'red'},
+  {id:8,  x1:7, x2:4, cls:'red'},
+  {id:9,  x1:5, x2:7, cls:'blue'},
+  {id:10, x1:6, x2:5, cls:'red'},
+];
+
+// ─── Scatter coordinate system ───────────────────────────────────────────────
+
+const P = { L:54, R:394, T:14, B:374 };
+const xScale = (P.R - P.L) / 8;   // x1: 0-8
+const yScale = (P.B - P.T) / 9;   // x2: 0-9
+
+function toSVG(x1, x2) {
+  return { x: P.L + x1 * xScale, y: P.B - x2 * yScale };
+}
+
+// Key split line positions in SVG coords
+const SX1 = P.L + 4 * xScale;          // x1=4 vertical line
+const SX2 = P.B - 6 * yScale;          // x2=6 horizontal line
+
+// ─── Step definitions ────────────────────────────────────────────────────────
+//
+// Each step has:
+//   title, body (HTML), scatter config, tree config
+
+const STEPS = [
+
+  // ── 0 ──────────────────────────────────────────────────────────────────────
+  {
+    title: 'Step 1 — The Training Data',
+    body: `
+      <p>We have <strong>10 labeled training examples</strong>. Each has two numeric features and a class label.</p>
+      <ul>
+        <li><strong>x₁</strong> — feature on the horizontal axis</li>
+        <li><strong>x₂</strong> — feature on the vertical axis</li>
+        <li>Class: <span class="tag-b">Blue</span> (6 points) or <span class="tag-r">Red</span> (4 points)</li>
+      </ul>
+      <p>Goal: build a tree of yes/no questions that correctly classifies every point.</p>
+      <div class="callout">
+        The tree starts as a single <em>root node</em> containing all 10 points. We'll split it recursively until every leaf holds only one class.
+      </div>`,
+    scatter: { regions:[], x1line:false, x2line:false, dimLeft:false, candidates:false },
+    tree: { root:true, rootTxt:'All 10 Points\n6 Blue · 4 Red',
+            left:false, right:false, rl:false, rr:false, active:'root' }
+  },
+
+  // ── 1 ──────────────────────────────────────────────────────────────────────
+  {
+    title: 'Step 2 — Measuring Impurity at the Root',
+    body: `
+      <p>Before choosing a split, we measure how <em>mixed</em> the root is using <strong>Gini impurity</strong>:</p>
+      <div class="math-block">Gini = 1 − Σ p<sub>k</sub>²</div>
+      <p>p<sub>k</sub> is the fraction of class k in the node. Gini = 0 means perfectly pure; Gini = 0.5 means maximally mixed.</p>
+      <p>At the root — 6 Blue, 4 Red, n = 10:</p>
+      <div class="math-block">
+        p<sub>Blue</sub> = 6/10 = 0.60<br>
+        p<sub>Red &nbsp;</sub> = 4/10 = 0.40<br>
+        Gini = 1 − (0.60)² − (0.40)²<br>
+        &nbsp;&nbsp;&nbsp;&nbsp; = 1 − 0.36 − 0.16<br>
+        &nbsp;&nbsp;&nbsp;&nbsp; = <span class="highlight-val">0.48</span>
+      </div>
+      <div class="callout">
+        0.48 is nearly the worst possible — the root node is about as mixed as it can be.
+        Every split we try will be judged on how much it reduces this number.
+      </div>`,
+    scatter: { regions:[], x1line:false, x2line:false, dimLeft:false, candidates:false },
+    tree: { root:true, rootTxt:'All 10 Points\n6 Blue · 4 Red\nGini = 0.48',
+            left:false, right:false, rl:false, rr:false, active:'root' }
+  },
+
+  // ── 2 ──────────────────────────────────────────────────────────────────────
+  {
+    title: 'Step 3 — Searching for the Best Split',
+    body: `
+      <p>The algorithm tries <em>every possible split</em>: for each feature, it considers every unique value as a threshold.</p>
+      <p>For each candidate split, it:</p>
+      <ol>
+        <li>Divides the points into a left child (condition true) and right child (condition false)</li>
+        <li>Computes Gini impurity for each child</li>
+        <li>Computes weighted average child impurity:<br>
+          <code>Gini<sub>w</sub> = (n<sub>L</sub>/n)·Gini<sub>L</sub> + (n<sub>R</sub>/n)·Gini<sub>R</sub></code>
+        </li>
+        <li>Computes gain = Gini<sub>parent</sub> − Gini<sub>w</sub></li>
+      </ol>
+      <p>The split with the <strong>highest gain</strong> wins. The light lines on the plot show a sample of the candidates being evaluated.</p>
+      <div class="callout">After evaluating all candidates, the winner is: <strong>x₁ &lt; 4</strong>. Let's work through that calculation.</div>`,
+    scatter: { regions:[], x1line:false, x2line:false, dimLeft:false, candidates:true },
+    tree: { root:true, rootTxt:'All 10 Points\n6 Blue · 4 Red\nGini = 0.48',
+            left:false, right:false, rl:false, rr:false, active:'root' }
+  },
+
+  // ── 3 ──────────────────────────────────────────────────────────────────────
+  {
+    title: 'Step 4 — Evaluating x₁ < 4',
+    body: `
+      <p>The dashed line on the plot shows the candidate split at x₁ = 4. Here's the information gain calculation:</p>
+      <div class="math-block">
+        <strong>Left child</strong>&nbsp; (x₁ &lt; 4): points 1–5<br>
+        &nbsp; 5 Blue, 0 Red<br>
+        &nbsp; Gini<sub>L</sub> = 1 − (5/5)² − (0/5)² = <span class="good">0.00 ✓ Pure!</span><br>
+        <br>
+        <strong>Right child</strong> (x₁ ≥ 4): points 6–10<br>
+        &nbsp; 1 Blue, 4 Red<br>
+        &nbsp; Gini<sub>R</sub> = 1 − (1/5)² − (4/5)²<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = 1 − 0.04 − 0.64 = <span class="highlight-val">0.32</span><br>
+        <br>
+        Gini<sub>weighted</sub> = (5/10)·0.00 + (5/10)·0.32 = 0.16<br>
+        Gain = 0.48 − 0.16 = <span class="good">0.32 ✓ Best split!</span>
+      </div>
+      <div class="callout">No other candidate split achieves a gain this high. This is the winning split.</div>`,
+    scatter: { regions:[], x1line:true, x2line:false, dimLeft:false, candidates:false, x1dash:true },
+    tree: { root:true, rootTxt:'All 10 Points\n6 Blue · 4 Red\nGini = 0.48',
+            left:false, right:false, rl:false, rr:false, active:'root' }
+  },
+
+  // ── 4 ──────────────────────────────────────────────────────────────────────
+  {
+    title: 'Step 5 — Applying the First Split',
+    body: `
+      <p>The root becomes a <strong>decision node</strong>: <em>"Is x₁ &lt; 4?"</em></p>
+      <ul>
+        <li><strong>Yes → left branch:</strong> 5 Blue, 0 Red — Gini = 0.00, pure!</li>
+        <li><strong>No &nbsp;→ right branch:</strong> 1 Blue, 4 Red — Gini = 0.32, still mixed</li>
+      </ul>
+      <p>The left subtree is already pure — no more splitting needed there. The right subtree still has mixed classes and needs another split.</p>
+      <div class="callout">Notice: everything to the left of the split line is Blue. The right side is mostly Red, with one Blue outlier sitting higher up (x₂ = 7).</div>`,
+    scatter: { regions:['left-light'], x1line:true, x2line:false, dimLeft:false, candidates:false },
+    tree: { root:true, rootTxt:'Is x₁ < 4 ?',
+            left:true,  leftTxt:'5 Blue · 0 Red\nGini = 0.00',  leftLeaf:false, leftColor:null,
+            right:true, rightTxt:'1 Blue · 4 Red\nGini = 0.32', rightLeaf:false, rightColor:null,
+            rl:false, rr:false, active:null }
+  },
+
+  // ── 5 ──────────────────────────────────────────────────────────────────────
+  {
+    title: 'Step 6 — Left Node Becomes a Leaf',
+    body: `
+      <p>Left child: <strong>5 Blue, 0 Red</strong> → Gini = 0. Perfectly pure.</p>
+      <p>We declare it a <strong>leaf node</strong> with prediction: <span class="tag-b">Predict Blue</span></p>
+      <p>Any new point with x₁ &lt; 4 will be classified Blue, regardless of x₂.</p>
+      <div class="callout">The left region is done — shaded solid blue on the plot. We now focus entirely on the right node, which still contains mixed classes.</div>`,
+    scatter: { regions:['left-solid'], x1line:true, x2line:false, dimLeft:true, candidates:false },
+    tree: { root:true, rootTxt:'Is x₁ < 4 ?',
+            left:true,  leftTxt:'Predict Blue ✓', leftLeaf:true, leftColor:'blue',
+            right:true, rightTxt:'1 Blue · 4 Red\nGini = 0.32', rightLeaf:false, rightColor:null,
+            rl:false, rr:false, active:'right' }
+  },
+
+  // ── 6 ──────────────────────────────────────────────────────────────────────
+  {
+    title: 'Step 7 — Working on the Right Node',
+    body: `
+      <p>The right node has these 5 points (x₁ ≥ 4):</p>
+      <div class="math-block">
+        (x₁=5, x₂=3) → <span style="color:#e05252">Red</span><br>
+        (x₁=6, x₂=2) → <span style="color:#e05252">Red</span><br>
+        (x₁=7, x₂=4) → <span style="color:#e05252">Red</span><br>
+        (x₁=5, x₂=7) → <span style="color:#3b82f6; font-weight:bold">Blue ← the outlier</span><br>
+        (x₁=6, x₂=5) → <span style="color:#e05252">Red</span>
+      </div>
+      <p>The lone Blue point sits noticeably <em>higher</em> than the Red points. A horizontal cut on x₂ might separate it cleanly.</p>
+      <p>We run the same search again — but now only over the 5 points in this node.</p>
+      <div class="callout">Each node's split search is local. We only look at the points that landed in this node, not the full training set.</div>`,
+    scatter: { regions:['left-solid'], x1line:true, x2line:false, dimLeft:true, candidates:false },
+    tree: { root:true, rootTxt:'Is x₁ < 4 ?',
+            left:true,  leftTxt:'Predict Blue ✓', leftLeaf:true, leftColor:'blue',
+            right:true, rightTxt:'1 Blue · 4 Red\nGini = 0.32', rightLeaf:false, rightColor:null,
+            rl:false, rr:false, active:'right' }
+  },
+
+  // ── 7 ──────────────────────────────────────────────────────────────────────
+  {
+    title: 'Step 8 — Evaluating x₂ < 6 (Right Node)',
+    body: `
+      <p>The dashed horizontal line shows candidate split x₂ = 6, evaluated within the right region only:</p>
+      <div class="math-block">
+        <strong>Left child</strong>&nbsp; (x₁ ≥ 4 AND x₂ &lt; 6): 4 points<br>
+        &nbsp; 0 Blue, 4 Red<br>
+        &nbsp; Gini<sub>L</sub> = 1 − (0/4)² − (4/4)² = <span class="good">0.00 ✓ Pure!</span><br>
+        <br>
+        <strong>Right child</strong> (x₁ ≥ 4 AND x₂ ≥ 6): 1 point<br>
+        &nbsp; 1 Blue, 0 Red<br>
+        &nbsp; Gini<sub>R</sub> = 1 − (1/1)² − (0/1)² = <span class="good">0.00 ✓ Pure!</span><br>
+        <br>
+        Gini<sub>weighted</sub> = (4/5)·0.00 + (1/5)·0.00 = 0.00<br>
+        Gain = 0.32 − 0.00 = <span class="good">0.32 — perfect split!</span>
+      </div>
+      <div class="callout">Both children would be pure. This is the maximum possible gain. We apply this split.</div>`,
+    scatter: { regions:['left-solid'], x1line:true, x2line:true, dimLeft:true, candidates:false, x2dash:true },
+    tree: { root:true, rootTxt:'Is x₁ < 4 ?',
+            left:true,  leftTxt:'Predict Blue ✓', leftLeaf:true, leftColor:'blue',
+            right:true, rightTxt:'1 Blue · 4 Red\nGini = 0.32', rightLeaf:false, rightColor:null,
+            rl:false, rr:false, active:'right' }
+  },
+
+  // ── 8 ──────────────────────────────────────────────────────────────────────
+  {
+    title: 'Step 9 — Applying the Second Split',
+    body: `
+      <p>The right node becomes a second <strong>decision node</strong>: <em>"Is x₂ &lt; 6?"</em></p>
+      <ul>
+        <li><strong>Yes → lower-right:</strong> 0 Blue, 4 Red → Gini = 0 → <span class="tag-r">Predict Red</span></li>
+        <li><strong>No &nbsp;→ upper-right:</strong> 1 Blue, 0 Red → Gini = 0 → <span class="tag-b">Predict Blue</span></li>
+      </ul>
+      <p>Both children are pure. All three leaf nodes are pure. The tree is <strong>done</strong> — no more splitting needed anywhere.</p>`,
+    scatter: { regions:['left-solid','right-bottom','right-top'], x1line:true, x2line:true, dimLeft:false, candidates:false },
+    tree: { root:true,  rootTxt:'Is x₁ < 4 ?',
+            left:true,  leftTxt:'Predict Blue ✓',  leftLeaf:true,  leftColor:'blue',
+            right:true, rightTxt:'Is x₂ < 6 ?',    rightLeaf:false, rightColor:null,
+            rl:true,    rlTxt:'Predict Red ✓',    rlLeaf:true,    rlColor:'red',
+            rr:true,    rrTxt:'Predict Blue ✓',   rrLeaf:true,    rrColor:'blue',
+            active:null }
+  },
+
+  // ── 9 ──────────────────────────────────────────────────────────────────────
+  {
+    title: 'Step 10 — The Trained Decision Tree',
+    body: `
+      <p>Training is complete. The tree has <strong>3 leaf nodes</strong>, dividing the feature space into 3 regions:</p>
+      <div class="math-block">
+        x₁ &lt; 4 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ <span style="color:#3b82f6;font-weight:bold">Predict Blue</span> &nbsp;(5 pts)<br>
+        x₁ ≥ 4 &nbsp;AND&nbsp; x₂ &lt; 6 &nbsp;&nbsp;&nbsp;→ <span style="color:#e05252;font-weight:bold">Predict Red</span> &nbsp;&nbsp;(4 pts)<br>
+        x₁ ≥ 4 &nbsp;AND&nbsp; x₂ ≥ 6 &nbsp;&nbsp;&nbsp;→ <span style="color:#3b82f6;font-weight:bold">Predict Blue</span> &nbsp;(1 pt)
+      </div>
+      <p>To classify a new point: follow the tree from root to leaf — at most 2 yes/no questions. The tree achieves <strong>100% training accuracy</strong>.</p>
+      <div class="callout">
+        Notice the tiny blue region in the upper-right — one training point carved out its own region. On real data, this is a classic sign of overfitting. In practice, we'd regularize with max depth, minimum leaf size, or pruning to prevent it.
+      </div>`,
+    scatter: { regions:['left-solid','right-bottom','right-top'], x1line:true, x2line:true, dimLeft:false, candidates:false },
+    tree: { root:true,  rootTxt:'Is x₁ < 4 ?',
+            left:true,  leftTxt:'Predict Blue ✓',  leftLeaf:true,  leftColor:'blue',
+            right:true, rightTxt:'Is x₂ < 6 ?',    rightLeaf:false, rightColor:null,
+            rl:true,    rlTxt:'Predict Red ✓',    rlLeaf:true,    rlColor:'red',
+            rr:true,    rrTxt:'Predict Blue ✓',   rrLeaf:true,    rrColor:'blue',
+            active:null }
+  },
+
+];
+
+// ─── Rendering ───────────────────────────────────────────────────────────────
+
+function renderScatter(sc) {
+  let s = '';
+
+  // Background
+  s += `<rect width="420" height="415" fill="#0a1c28"/>`;
+
+  // Grid
+  for (let v = 0; v <= 8; v++) {
+    const sx = P.L + v * xScale;
+    s += `<line x1="${sx}" y1="${P.T}" x2="${sx}" y2="${P.B}" stroke="#182838" stroke-width="1"/>`;
+  }
+  for (let v = 0; v <= 9; v++) {
+    const sy = P.B - v * yScale;
+    s += `<line x1="${P.L}" y1="${sy}" x2="${P.R}" y2="${sy}" stroke="#182838" stroke-width="1"/>`;
+  }
+
+  // Shaded regions
+  const rw = P.R - P.L, rh = P.B - P.T;
+  const lw = SX1 - P.L, rr_w = P.R - SX1;
+  const top_h = SX2 - P.T, bot_h = P.B - SX2;
+
+  if (sc.regions.includes('left-light'))
+    s += `<rect x="${P.L}" y="${P.T}" width="${lw}" height="${rh}" fill="#93c5fd" opacity="0.25"/>`;
+  if (sc.regions.includes('left-solid'))
+    s += `<rect x="${P.L}" y="${P.T}" width="${lw}" height="${rh}" fill="#93c5fd" opacity="0.42"/>`;
+  if (sc.regions.includes('right-bottom'))
+    s += `<rect x="${SX1}" y="${SX2}" width="${rr_w}" height="${bot_h}" fill="#fca5a5" opacity="0.42"/>`;
+  if (sc.regions.includes('right-top'))
+    s += `<rect x="${SX1}" y="${P.T}" width="${rr_w}" height="${top_h}" fill="#93c5fd" opacity="0.35"/>`;
+
+  // Candidate split lines (step 3)
+  if (sc.candidates) {
+    [[3,true],[5,true],[6,true]].forEach(([v]) => {
+      const sx = P.L + v * xScale;
+      s += `<line x1="${sx}" y1="${P.T}" x2="${sx}" y2="${P.B}" stroke="#9ab5c0" stroke-width="1.2" stroke-dasharray="5,4" opacity="0.55"/>`;
+    });
+    [[3,false],[5,false]].forEach(([v]) => {
+      const sy = P.B - v * yScale;
+      s += `<line x1="${P.L}" y1="${sy}" x2="${P.R}" y2="${sy}" stroke="#9ab5c0" stroke-width="1.2" stroke-dasharray="5,4" opacity="0.55"/>`;
+    });
+  }
+
+  // x1=4 split line
+  if (sc.x1line) {
+    const dash = sc.x1dash ? 'stroke-dasharray="9,5"' : '';
+    s += `<line x1="${SX1}" y1="${P.T}" x2="${SX1}" y2="${P.B}" stroke="#1b6b8a" stroke-width="2.2" ${dash}/>`;
+    s += `<text x="${SX1+4}" y="${P.T+14}" font-size="11" fill="#1b6b8a" font-weight="700" font-family="sans-serif">x₁ = 4</text>`;
+  }
+
+  // x2=6 split line (right region only)
+  if (sc.x2line) {
+    const dash = sc.x2dash ? 'stroke-dasharray="9,5"' : '';
+    s += `<line x1="${SX1}" y1="${SX2}" x2="${P.R}" y2="${SX2}" stroke="#c06010" stroke-width="2.2" ${dash}/>`;
+    s += `<text x="${SX1+4}" y="${SX2-5}" font-size="11" fill="#c06010" font-weight="700" font-family="sans-serif">x₂ = 6</text>`;
+  }
+
+  // Axes
+  s += `<line x1="${P.L}" y1="${P.T}" x2="${P.L}" y2="${P.B}" stroke="#2a5870" stroke-width="2"/>`;
+  s += `<line x1="${P.L}" y1="${P.B}" x2="${P.R}" y2="${P.B}" stroke="#2a5870" stroke-width="2"/>`;
+
+  // Tick labels
+  for (let v = 0; v <= 8; v += 2) {
+    const sx = P.L + v * xScale;
+    s += `<text x="${sx}" y="${P.B+16}" text-anchor="middle" font-size="11" fill="#5a8898" font-family="sans-serif">${v}</text>`;
+  }
+  for (let v = 0; v <= 8; v += 2) {
+    const sy = P.B - v * yScale;
+    s += `<text x="${P.L-6}" y="${sy+4}" text-anchor="end" font-size="11" fill="#5a8898" font-family="sans-serif">${v}</text>`;
+  }
+
+  // Axis labels
+  const midX = (P.L + P.R) / 2, midY = (P.T + P.B) / 2;
+  s += `<text x="${midX}" y="410" text-anchor="middle" font-size="13" fill="#7aacc0" font-weight="700" font-family="sans-serif">x₁</text>`;
+  s += `<text x="12" y="${midY}" text-anchor="middle" font-size="13" fill="#333" font-weight="700" font-family="sans-serif" transform="rotate(-90,12,${midY})">x₂</text>`;
+
+  // Data points
+  PTS.forEach(p => {
+    const {x, y} = toSVG(p.x1, p.x2);
+    const inLeft = p.x1 < 4;
+    const opacity = (sc.dimLeft && inLeft) ? 0.12 : 1;
+
+    if (p.cls === 'blue') {
+      s += `<circle cx="${x}" cy="${y}" r="9.5" fill="#3b82f6" stroke="white" stroke-width="1.8" opacity="${opacity}"/>`;
+      s += `<text x="${x}" y="${y+4}" text-anchor="middle" font-size="9" fill="white" font-weight="700" font-family="sans-serif" opacity="${opacity}">B</text>`;
+    } else {
+      // Diamond shape
+      const d = 8.5;
+      s += `<polygon points="${x},${y-d*1.32} ${x+d*1.32},${y} ${x},${y+d*1.32} ${x-d*1.32},${y}" fill="#e05252" stroke="white" stroke-width="1.8" opacity="${opacity}"/>`;
+      s += `<text x="${x}" y="${y+4}" text-anchor="middle" font-size="9" fill="white" font-weight="700" font-family="sans-serif" opacity="${opacity}">R</text>`;
+    }
+  });
+
+  // Legend
+  const lx = P.L + 4, ly = P.T + 8;
+  s += `<rect x="${lx}" y="${ly}" width="100" height="42" rx="5" fill="#0a1c28" opacity="0.95"/>`;
+  s += `<circle cx="${lx+14}" cy="${ly+12}" r="7" fill="#3b82f6"/>`;
+  s += `<text x="${lx+25}" y="${ly+16}" font-size="11" fill="#7aacc0" font-family="sans-serif">Blue (6 pts)</text>`;
+  const dx = lx+14, dy = ly+30, dd = 6.5;
+  s += `<polygon points="${dx},${dy-dd*1.32} ${dx+dd*1.32},${dy} ${dx},${dy+dd*1.32} ${dx-dd*1.32},${dy}" fill="#e05252"/>`;
+  s += `<text x="${lx+25}" y="${ly+34}" font-size="11" fill="#7aacc0" font-family="sans-serif">Red (4 pts)</text>`;
+
+  return s;
+}
+
+function drawNode(s_ref, key, txt, isLeaf, leafColor, isActive, nodes) {
+  const n = nodes[key];
+  let fill  = '#102030';
+  let stroke = '#4a8aa8';
+  let strokeW = 2;
+  let textColor = '#c0d8e8';
+
+  if (isLeaf && leafColor === 'blue')  { fill = '#0d2a50'; stroke = '#3b82f6'; }
+  if (isLeaf && leafColor === 'red')   { fill = '#380c0c'; stroke = '#e05252'; }
+  if (isActive) { stroke = '#f59e0b'; strokeW = 3; }
+
+  const lines = txt.split('\n');
+  const lh = 17;
+  const bh = Math.max(n.h, lines.length * lh + 14);
+
+  s_ref.push(`<rect x="${n.x - n.w/2}" y="${n.y - bh/2}" width="${n.w}" height="${bh}" rx="9" fill="${fill}" stroke="${stroke}" stroke-width="${strokeW}"/>`);
+
+  const startY = n.y - (lines.length - 1) * lh / 2;
+  lines.forEach((line, i) => {
+    const bold = (i === 0) ? '700' : '400';
+    const size = (i === 0) ? 12 : 11;
+    s_ref.push(`<text x="${n.x}" y="${startY + i*lh}" text-anchor="middle" dominant-baseline="middle" font-size="${size}" font-weight="${bold}" fill="${textColor}" font-family="-apple-system,sans-serif">${line}</text>`);
+  });
+}
+
+function drawEdge(s_ref, fromKey, toKey, label, nodes) {
+  const p = nodes[fromKey], c = nodes[toKey];
+  s_ref.push(`<line x1="${p.x}" y1="${p.y + p.h/2 + 2}" x2="${c.x}" y2="${c.y - c.h/2 - 2}" stroke="#3a7090" stroke-width="1.8"/>`);
+  const mx = (p.x + c.x) / 2, my = (p.y + p.h/2 + c.y - c.h/2) / 2;
+  s_ref.push(`<text x="${mx}" y="${my - 3}" text-anchor="middle" font-size="10" fill="#6a9ab0" font-style="italic" font-family="sans-serif">${label}</text>`);
+}
+
+function renderTree(t) {
+  const nodes = {
+    root:  {x: 480, y: 50,  w: 170, h: 56},
+    left:  {x: 230, y: 165, w: 158, h: 56},
+    right: {x: 730, y: 165, w: 158, h: 56},
+    rl:    {x: 615, y: 260, w: 152, h: 48},
+    rr:    {x: 870, y: 260, w: 152, h: 48},
+  };
+
+  const parts = ['<rect width="960" height="290" fill="#0a1c28"/>'];
+
+  if (t.root) {
+    if (t.left)  drawEdge(parts, 'root', 'left',  'Yes  (x₁ < 4)', nodes);
+    if (t.right) drawEdge(parts, 'root', 'right', 'No  (x₁ ≥ 4)', nodes);
+    drawNode(parts, 'root', t.rootTxt, false, null, t.active === 'root', nodes);
+  }
+  if (t.left) {
+    drawNode(parts, 'left', t.leftTxt, t.leftLeaf, t.leftColor, t.active === 'left', nodes);
+  }
+  if (t.right) {
+    if (t.rl) drawEdge(parts, 'right', 'rl', 'Yes  (x₂ < 6)', nodes);
+    if (t.rr) drawEdge(parts, 'right', 'rr', 'No  (x₂ ≥ 6)', nodes);
+    drawNode(parts, 'right', t.rightTxt, t.rightLeaf || false, t.rightColor, t.active === 'right', nodes);
+  }
+  if (t.rl) {
+    drawNode(parts, 'rl', t.rlTxt, t.rlLeaf, t.rlColor, t.active === 'rl', nodes);
+  }
+  if (t.rr) {
+    drawNode(parts, 'rr', t.rrTxt, t.rrLeaf, t.rrColor, t.active === 'rr', nodes);
+  }
+
+  return parts.join('\n');
+}
+
+// ─── State and navigation ─────────────────────────────────────────────────────
+
+let currentStep = 0;
+
+function render() {
+  const step = STEPS[currentStep];
+
+  // Scatter
+  document.getElementById('scatter').innerHTML = renderScatter(step.scatter);
+
+  // Tree
+  document.getElementById('tree').innerHTML = renderTree(step.tree);
+
+  // Explanation
+  document.getElementById('step-title').textContent = step.title;
+  document.getElementById('step-body').innerHTML = step.body;
+
+  // Counter
+  document.getElementById('step-counter').textContent =
+    `Step ${currentStep + 1} of ${STEPS.length}`;
+
+  // Buttons
+  document.getElementById('prev-btn').disabled = (currentStep === 0);
+  document.getElementById('next-btn').disabled = (currentStep === STEPS.length - 1);
+
+  // Progress dots
+  const dots = document.getElementById('dots');
+  dots.innerHTML = '';
+  STEPS.forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'dot' + (i < currentStep ? ' done' : i === currentStep ? ' active' : '');
+    dots.appendChild(d);
+  });
+}
+
+function changeStep(delta) {
+  const next = currentStep + delta;
+  if (next >= 0 && next < STEPS.length) {
+    currentStep = next;
+    render();
+    window.scrollTo({top: 0, behavior: 'smooth'});
+  }
+}
+
+// Keyboard navigation
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') changeStep(1);
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   changeStep(-1);
+});
+
+render();
+</script>
+</body>
+</html>

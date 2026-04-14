@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How Linear Regression Learns — Step by Step</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#08140e; color:#c8e8d4; }
+header { background:linear-gradient(135deg,#2a5c45,#1a3d2e); color:white; padding:18px 36px; display:flex; justify-content:space-between; align-items:center; box-shadow:0 2px 10px rgba(0,0,0,0.3); }
+header h1 { font-size:1.45rem; font-weight:700; letter-spacing:-0.3px; }
+#step-counter { background:rgba(255,255,255,0.18); padding:5px 16px; border-radius:20px; font-size:0.88rem; font-weight:600; }
+.content { max-width:1120px; margin:0 auto; padding:20px 24px 32px; }
+.main-row { display:flex; gap:20px; margin-bottom:20px; }
+.panel { background:#0e2018; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.3); overflow:hidden; }
+.panel-header { background:#0c2816; border-bottom:1px solid #1a4828; padding:10px 18px; font-size:0.75rem; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:#50a870; }
+#plot-panel { flex:0 0 420px; }
+#plot-panel svg { display:block; }
+#explain-panel { flex:1; display:flex; flex-direction:column; }
+#explain-content { padding:18px 22px; flex:1; }
+#step-title { font-size:1.18rem; font-weight:700; color:#50c880; margin-bottom:13px; line-height:1.3; }
+#step-body { font-size:0.93rem; line-height:1.75; color:#90c8a8; }
+#step-body p { margin-bottom:11px; }
+#step-body ul, #step-body ol { margin:6px 0 11px 22px; }
+#step-body li { margin-bottom:3px; }
+.math-block { background:#0c2018; border-left:3px solid #2a5c45; padding:11px 15px; margin:11px 0; font-family:'Menlo','Courier New',monospace; font-size:0.85rem; line-height:1.85; border-radius:0 6px 6px 0; color:#80c898; }
+.good { color:#4ad890; font-weight:700; }
+.note { color:#50c880; font-weight:700; }
+.callout { background:#0c2816; border-radius:8px; padding:9px 14px; margin-top:10px; font-size:0.88rem; color:#6ab888; line-height:1.6; }
+#loss-panel { margin-bottom:20px; }
+#loss-panel svg { display:block; width:100%; }
+.nav-bar { display:flex; justify-content:center; align-items:center; gap:20px; padding:4px 0 16px; }
+.nav-bar button { background:#2a5c45; color:white; border:none; padding:11px 30px; font-size:0.97rem; font-weight:600; border-radius:8px; cursor:pointer; transition:background 0.15s,transform 0.1s; }
+.nav-bar button:hover { background:#1e4433; transform:translateY(-1px); }
+.nav-bar button:active { transform:translateY(0); }
+.nav-bar button:disabled { background:#1a3828; cursor:default; transform:none; }
+.dots { display:flex; gap:7px; align-items:center; }
+.dot { width:9px; height:9px; border-radius:50%; background:#1a3828; transition:background 0.2s; }
+.dot.active { background:#2a5c45; transform:scale(1.3); }
+.dot.done   { background:#4aaa7a; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>How Linear Regression Learns — Step by Step</h1>
+  <div id="step-counter">Step 1 of 10</div>
+</header>
+
+<div class="content">
+  <div class="main-row">
+    <div class="panel" id="plot-panel">
+      <div class="panel-header">Feature Space</div>
+      <svg id="scatter" width="420" height="415"></svg>
+    </div>
+    <div class="panel" id="explain-panel">
+      <div class="panel-header">What the Algorithm Is Doing</div>
+      <div id="explain-content">
+        <div id="step-title"></div>
+        <div id="step-body"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="loss-panel">
+    <div class="panel-header">Loss Curve (MSE over gradient descent iterations)</div>
+    <svg id="loss-curve" viewBox="0 0 960 180" height="180"></svg>
+  </div>
+
+  <div class="nav-bar">
+    <button id="prev-btn" onclick="changeStep(-1)" disabled>← Previous</button>
+    <div class="dots" id="dots"></div>
+    <button id="next-btn" onclick="changeStep(1)">Next →</button>
+  </div>
+</div>
+
+<script>
+// ─── Dataset ─────────────────────────────────────────────────────────────────
+const DX = [1, 2, 3, 4, 5];
+const DY = [3.2, 5.1, 6.8, 9.0, 11.1];
+const N  = DX.length;
+
+// ─── Gradient descent (300 iterations) ───────────────────────────────────────
+const LR = 0.025;
+let gm = 0, gb = 0;
+const HIST = [];  // [{m, b, mse, gm, gb}]
+
+for (let iter = 0; iter <= 300; iter++) {
+  const preds = DX.map(x => gm*x + gb);
+  const res   = DY.map((y,i) => y - preds[i]);
+  const mse   = res.reduce((s,r)=>s+r*r,0) / N;
+  const gradM = -(2/N) * DX.reduce((s,x,i)=>s+x*res[i], 0);
+  const gradB = -(2/N) * res.reduce((s,r)=>s+r, 0);
+  HIST.push({m:gm, b:gb, mse, gm:gradM, gb:gradB, res:[...res]});
+  gm -= LR * gradM;
+  gb -= LR * gradB;
+}
+
+// ─── Scatter plot coordinate system ──────────────────────────────────────────
+const SP = { L:54, R:394, T:14, B:374 };
+SP.xS = (SP.R-SP.L)/6;   // x: 0-6
+SP.yS = (SP.B-SP.T)/13;  // y: 0-13
+
+function toSVG(x, y) {
+  return { x: SP.L + x*SP.xS, y: SP.B - y*SP.yS };
+}
+
+// ─── Steps ───────────────────────────────────────────────────────────────────
+// hIdx: which history entry to use (null = no GD state)
+// showLine, showResid: visual flags
+const STEPS = [
+  {
+    title: 'Step 1 — The Training Data',
+    hIdx: null, showLine: false, showResid: false,
+    body: () => `
+      <p>We have <strong>5 labeled training examples</strong>. Each has a single feature <em>x</em> and a numeric target value <em>y</em>.</p>
+      <div class="math-block">
+        x: 1, 2, 3, 4, 5<br>
+        y: 3.2, 5.1, 6.8, 9.0, 11.1
+      </div>
+      <p>Goal: find the line that best fits these points — so we can <em>predict</em> y for new x values we haven't seen.</p>
+      <div class="callout">Unlike a decision tree (which makes discrete splits), linear regression learns a continuous function. It has two parameters to find: a <strong>slope</strong> and an <strong>intercept</strong>.</div>`
+  },
+  {
+    title: 'Step 2 — The Model: ŷ = mx + b',
+    hIdx: null, showLine: true, showResid: false, showIllustrative: true,
+    body: () => `
+      <p>Linear regression models the relationship as a straight line:</p>
+      <div class="math-block">ŷ = m·x + b</div>
+      <p>Two parameters determine the line:</p>
+      <ul>
+        <li><strong>m</strong> — slope: how much y changes per unit increase in x</li>
+        <li><strong>b</strong> — intercept: where the line crosses the y-axis (x=0)</li>
+      </ul>
+      <p>For any pair (m, b) we can draw a line and see how well it fits the data. The question is: how do we measure "well" — and how do we improve it systematically?</p>
+      <div class="callout">The plot shows a few candidate lines. We need a way to say which one is "best."</div>`
+  },
+  {
+    title: 'Step 3 — The Loss Function: MSE',
+    hIdx: 0, showLine: true, showResid: true,
+    body: (h) => `
+      <p>We measure fit using <strong>Mean Squared Error (MSE)</strong>. For each training point, compute the <em>residual</em> — the vertical gap between the true value and the prediction:</p>
+      <div class="math-block">
+        Residual<sub>i</sub> = y<sub>i</sub> − ŷ<sub>i</sub><br><br>
+        MSE = <sup>1</sup>/<sub>n</sub> Σ (y<sub>i</sub> − ŷ<sub>i</sub>)²
+      </div>
+      <p>Squaring makes all residuals positive and penalizes large errors more heavily than small ones.</p>
+      <p>The dashed vertical lines on the plot are the residuals for the initial line (m=0, b=0).</p>
+      <div class="callout">Minimizing MSE over all possible (m, b) is the training problem. Gradient descent solves it by taking small steps downhill on the MSE surface.</div>`
+  },
+  {
+    title: 'Step 4 — The Gradient',
+    hIdx: 0, showLine: true, showResid: true,
+    body: (h) => `
+      <p>The gradient of MSE with respect to m and b tells us <em>which direction to move</em> to reduce the loss fastest:</p>
+      <div class="math-block">
+        ∂MSE/∂m = −<sup>2</sup>/<sub>n</sub> Σ x<sub>i</sub>(y<sub>i</sub> − ŷ<sub>i</sub>)<br>
+        ∂MSE/∂b = −<sup>2</sup>/<sub>n</sub> Σ (y<sub>i</sub> − ŷ<sub>i</sub>)
+      </div>
+      <p>The gradient points <em>uphill</em> — in the direction of steepest loss increase. So we subtract it (scaled by a <strong>learning rate</strong> α) to go downhill:</p>
+      <div class="math-block">
+        m ← m − α · ∂MSE/∂m<br>
+        b ← b − α · ∂MSE/∂b
+      </div>
+      <div class="callout">At the current state (m=0, b=0), the gradient is large and negative — telling us m and b both need to increase. Let's compute the first step.</div>`
+  },
+  {
+    title: 'Step 5 — Initial State: m = 0, b = 0',
+    hIdx: 0, showLine: true, showResid: true,
+    body: (h) => `
+      <p>We start with m = 0, b = 0 — a flat line at y = 0. Clearly wrong, but that's fine: we just need a starting point.</p>
+      <div class="math-block">
+        MSE = ${h.mse.toFixed(2)}<br><br>
+        ∂MSE/∂m = ${h.gm.toFixed(2)}<br>
+        ∂MSE/∂b = ${h.gb.toFixed(2)}
+      </div>
+      <p>Both gradients are large and negative. The loss surface is telling us: <em>increase m, increase b</em>.</p>
+      <p>With learning rate α = ${LR}, the updates are:</p>
+      <div class="math-block">
+        m ← 0 − ${LR}·(${h.gm.toFixed(2)}) = <span class="good">${(0 - LR*h.gm).toFixed(3)}</span><br>
+        b ← 0 − ${LR}·(${h.gb.toFixed(2)}) = <span class="good">${(0 - LR*h.gb).toFixed(3)}</span>
+      </div>`
+  },
+  {
+    title: 'Step 6 — After Iteration 1',
+    hIdx: 1, showLine: true, showResid: true,
+    body: (h) => `
+      <p>After one gradient step, the line has changed dramatically:</p>
+      <div class="math-block">
+        m = ${h.m.toFixed(3)},&nbsp; b = ${h.b.toFixed(3)}<br>
+        MSE = <span class="good">${h.mse.toFixed(2)}</span>  (was 57.34)
+      </div>
+      <p>MSE dropped from 57.3 to ${h.mse.toFixed(2)} in a single step — an ${Math.round((1-h.mse/57.34)*100)}% reduction. The slope is now roughly right; the intercept still needs work.</p>
+      <p>Notice the residuals (dashed lines) are much smaller than before, but still systematically positive — the line is still a bit too low. The gradient will correct that.</p>
+      <div class="callout">The first step is always the largest because the gradient is steepest at a bad starting point. Subsequent steps get progressively smaller as the loss flattens.</div>`
+  },
+  {
+    title: 'Step 7 — After Iteration 3',
+    hIdx: 3, showLine: true, showResid: true,
+    body: (h) => `
+      <p>After 3 gradient steps:</p>
+      <div class="math-block">
+        m = ${h.m.toFixed(3)},&nbsp; b = ${h.b.toFixed(3)}<br>
+        MSE = <span class="good">${h.mse.toFixed(3)}</span>
+      </div>
+      <p>The slope (${h.m.toFixed(2)}) is almost exactly at the optimal value of 1.97. The intercept (${h.b.toFixed(2)}) is still below the optimal 1.13 — it converges more slowly because the gradient signal for b is weaker.</p>
+      <div class="callout">This is a common pattern: different parameters converge at different rates depending on the geometry of the loss surface. Slope is driven by how the residuals correlate with x; intercept is driven by their average.</div>`
+  },
+  {
+    title: 'Step 8 — After Iteration 8',
+    hIdx: 8, showLine: true, showResid: true,
+    body: (h) => `
+      <p>After 8 gradient steps:</p>
+      <div class="math-block">
+        m = ${h.m.toFixed(3)},&nbsp; b = ${h.b.toFixed(3)}<br>
+        MSE = <span class="good">${h.mse.toFixed(4)}</span>
+      </div>
+      <p>The line passes very close to the data. The residuals are tiny — barely visible on the plot. Most of the remaining error is irreducible noise in the training data.</p>
+      <p>Notice the loss curve at the bottom: it's now in the nearly-flat region. Each additional step makes only a tiny improvement.</p>`
+  },
+  {
+    title: 'Step 9 — After Iteration 60',
+    hIdx: 60, showLine: true, showResid: true,
+    body: (h) => `
+      <p>After 60 gradient steps:</p>
+      <div class="math-block">
+        m = ${h.m.toFixed(3)},&nbsp; b = ${h.b.toFixed(3)}<br>
+        MSE = <span class="good">${h.mse.toFixed(4)}</span>
+      </div>
+      <p>The parameters are approaching the least-squares optimal values (m = 1.970, b = 1.130). Convergence has slowed — the gradient is very small now and each step barely moves the parameters.</p>
+      <div class="callout">In practice, we stop early using a convergence criterion (e.g., stop when the gradient magnitude drops below a threshold, or when loss improvement falls below ε). Running indefinitely costs compute for negligible gain.</div>`
+  },
+  {
+    title: 'Step 10 — The Trained Model',
+    hIdx: 300, showLine: true, showResid: true,
+    body: (h) => `
+      <p>After 300 gradient steps, the model has converged:</p>
+      <div class="math-block">
+        m = ${h.m.toFixed(3)},&nbsp; b = ${h.b.toFixed(3)}<br>
+        MSE = <span class="good">${h.mse.toFixed(4)}</span>
+      </div>
+      <p>Compare to the analytical least-squares solution: m = 1.970, b = 1.130. Gradient descent has found essentially the same answer.</p>
+      <p>The trained model says: <em>for every 1-unit increase in x, y increases by ~2 units</em>. The intercept (~1.1) is where the line crosses the y-axis.</p>
+      <div class="callout">For linear regression, gradient descent and the analytical solution give the same answer. Gradient descent is used instead of the closed-form solution when the dataset is too large for matrix inversion — or when the model is not linear (e.g., neural networks), where no closed form exists.</div>`
+  },
+];
+
+// ─── Scatter rendering ────────────────────────────────────────────────────────
+
+function renderScatter(step, h) {
+  let s = '';
+
+  // Background
+  s += `<rect width="420" height="415" fill="#0a1c14"/>`;
+
+  // Grid
+  for (let v=0; v<=6; v++) {
+    const sx = SP.L + v*SP.xS;
+    s += `<line x1="${sx}" y1="${SP.T}" x2="${sx}" y2="${SP.B}" stroke="#182818" stroke-width="1"/>`;
+  }
+  for (let v=0; v<=13; v+=2) {
+    const sy = SP.B - v*SP.yS;
+    s += `<line x1="${SP.L}" y1="${sy}" x2="${SP.R}" y2="${sy}" stroke="#182818" stroke-width="1"/>`;
+  }
+
+  // Illustrative lines for step 2
+  if (step.showIllustrative) {
+    [[0.5, 4],[1.5,1],[3,-1]].forEach(([m_,b_]) => {
+      const p0 = toSVG(0, b_), p1 = toSVG(6, m_*6+b_);
+      s += `<line x1="${p0.x}" y1="${p0.y}" x2="${p1.x}" y2="${p1.y}" stroke="#aaccbb" stroke-width="1.5" stroke-dasharray="6,4" opacity="0.6"/>`;
+    });
+  }
+
+  // Regression line
+  if (step.showLine && h) {
+    const x0 = 0, x1 = 6;
+    const y0 = h.m*x0 + h.b, y1 = h.m*x1 + h.b;
+    const p0 = toSVG(x0, y0), p1 = toSVG(x1, y1);
+    s += `<line x1="${p0.x}" y1="${p0.y}" x2="${p1.x}" y2="${p1.y}" stroke="#2a5c45" stroke-width="2.5"/>`;
+  }
+
+  // Residuals
+  if (step.showResid && h) {
+    DX.forEach((x, i) => {
+      const pt   = toSVG(x, DY[i]);
+      const pred = h.m*x + h.b;
+      const pp   = toSVG(x, pred);
+      s += `<line x1="${pt.x}" y1="${pt.y}" x2="${pp.x}" y2="${pp.y}" stroke="#3a6858" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.7"/>`;
+    });
+  }
+
+  // Axes
+  s += `<line x1="${SP.L}" y1="${SP.T}" x2="${SP.L}" y2="${SP.B}" stroke="#286040" stroke-width="2"/>`;
+  s += `<line x1="${SP.L}" y1="${SP.B}" x2="${SP.R}" y2="${SP.B}" stroke="#286040" stroke-width="2"/>`;
+
+  // Tick labels
+  for (let v=0; v<=6; v+=1) {
+    const sx = SP.L + v*SP.xS;
+    s += `<text x="${sx}" y="${SP.B+16}" text-anchor="middle" font-size="11" fill="#4a8868" font-family="sans-serif">${v}</text>`;
+  }
+  for (let v=0; v<=12; v+=2) {
+    const sy = SP.B - v*SP.yS;
+    s += `<text x="${SP.L-6}" y="${sy+4}" text-anchor="end" font-size="11" fill="#4a8868" font-family="sans-serif">${v}</text>`;
+  }
+
+  // Axis labels
+  const midX = (SP.L+SP.R)/2, midY = (SP.T+SP.B)/2;
+  s += `<text x="${midX}" y="410" text-anchor="middle" font-size="13" fill="#68a888" font-weight="700" font-family="sans-serif">x</text>`;
+  s += `<text x="12" y="${midY}" text-anchor="middle" font-size="13" fill="#333" font-weight="700" font-family="sans-serif" transform="rotate(-90,12,${midY})">y</text>`;
+
+  // Data points
+  DX.forEach((x, i) => {
+    const {x: sx, y: sy} = toSVG(x, DY[i]);
+    s += `<circle cx="${sx}" cy="${sy}" r="8" fill="#2a5c45" stroke="white" stroke-width="2"/>`;
+    s += `<text x="${sx}" y="${sy+4}" text-anchor="middle" font-size="9" fill="white" font-weight="700" font-family="sans-serif">${DY[i]}</text>`;
+  });
+
+  // MSE annotation
+  if (h) {
+    s += `<rect x="${SP.R-110}" y="${SP.T+6}" width="105" height="26" rx="5" fill="#0a1c14" opacity="0.95"/>`;
+    s += `<text x="${SP.R-58}" y="${SP.T+23}" text-anchor="middle" font-size="11.5" fill="#2a5c45" font-weight="700" font-family="sans-serif">MSE = ${h.mse.toFixed(3)}</text>`;
+  }
+
+  return s;
+}
+
+// ─── Loss curve rendering ─────────────────────────────────────────────────────
+
+const LC = { L:60, R:930, T:20, B:155 };
+const N_SHOW = 100; // show first 100 iterations
+
+function renderLoss(hIdx) {
+  let s = '<rect width="960" height="180" fill="#0a1c14"/>';
+
+  const maxMse = HIST[0].mse;
+
+  // Grid horizontals
+  [0, 0.25, 0.5, 0.75, 1].forEach(frac => {
+    const sy = LC.T + (1-frac)*(LC.B-LC.T);
+    const mseVal = frac * maxMse;
+    s += `<line x1="${LC.L}" y1="${sy}" x2="${LC.R}" y2="${sy}" stroke="#182818" stroke-width="1"/>`;
+    s += `<text x="${LC.L-5}" y="${sy+4}" text-anchor="end" font-size="10" fill="#4a8868" font-family="sans-serif">${mseVal.toFixed(0)}</text>`;
+  });
+
+  // Build loss curve path
+  const xS = (LC.R-LC.L) / N_SHOW;
+  const yS = (LC.B-LC.T) / maxMse;
+  let path = '';
+  for (let i=0; i<=Math.min(N_SHOW, HIST.length-1); i++) {
+    const sx = LC.L + i*xS;
+    const sy = LC.B - HIST[i].mse * yS;
+    path += (i===0 ? `M${sx},${sy}` : ` L${sx},${sy}`);
+  }
+  s += `<path d="${path}" fill="none" stroke="#2a5c45" stroke-width="2.5"/>`;
+
+  // Current iteration marker
+  if (hIdx !== null) {
+    const idx = Math.min(hIdx, N_SHOW);
+    const sx  = LC.L + idx*xS;
+    const sy  = LC.B - HIST[hIdx].mse * yS;
+    s += `<line x1="${sx}" y1="${LC.T}" x2="${sx}" y2="${LC.B}" stroke="#e07030" stroke-width="1.5" stroke-dasharray="5,3"/>`;
+    s += `<circle cx="${sx}" cy="${sy}" r="6" fill="#e07030" stroke="white" stroke-width="2"/>`;
+    s += `<text x="${sx+8}" y="${sy-4}" font-size="11" fill="#e07030" font-weight="700" font-family="sans-serif">iter ${hIdx}</text>`;
+  }
+
+  // Axes
+  s += `<line x1="${LC.L}" y1="${LC.T}" x2="${LC.L}" y2="${LC.B}" stroke="#286040" stroke-width="1.5"/>`;
+  s += `<line x1="${LC.L}" y1="${LC.B}" x2="${LC.R}" y2="${LC.B}" stroke="#286040" stroke-width="1.5"/>`;
+
+  // x-axis ticks
+  [0,10,20,30,40,50,75,100].forEach(v => {
+    const sx = LC.L + v*xS;
+    s += `<text x="${sx}" y="${LC.B+14}" text-anchor="middle" font-size="10" fill="#4a8868" font-family="sans-serif">${v}</text>`;
+  });
+
+  s += `<text x="${(LC.L+LC.R)/2}" y="175" text-anchor="middle" font-size="11" fill="#3a7058" font-family="sans-serif">Gradient Descent Iteration</text>`;
+  s += `<text x="11" y="${(LC.T+LC.B)/2}" text-anchor="middle" font-size="11" fill="#3a7058" font-family="sans-serif" transform="rotate(-90,11,${(LC.T+LC.B)/2})">MSE</text>`;
+
+  return s;
+}
+
+// ─── State and navigation ─────────────────────────────────────────────────────
+
+let currentStep = 0;
+
+function render() {
+  const step = STEPS[currentStep];
+  const h = step.hIdx !== null ? HIST[step.hIdx] : null;
+
+  document.getElementById('scatter').innerHTML = renderScatter(step, h);
+  document.getElementById('loss-curve').innerHTML = renderLoss(step.hIdx);
+  document.getElementById('step-title').textContent = step.title;
+  document.getElementById('step-body').innerHTML = step.body(h);
+  document.getElementById('step-counter').textContent = `Step ${currentStep+1} of ${STEPS.length}`;
+
+  document.getElementById('prev-btn').disabled = currentStep === 0;
+  document.getElementById('next-btn').disabled = currentStep === STEPS.length-1;
+
+  const dots = document.getElementById('dots');
+  dots.innerHTML = '';
+  STEPS.forEach((_,i) => {
+    const d = document.createElement('div');
+    d.className = 'dot' + (i < currentStep ? ' done' : i===currentStep ? ' active' : '');
+    dots.appendChild(d);
+  });
+}
+
+function changeStep(delta) {
+  const next = currentStep + delta;
+  if (next >= 0 && next < STEPS.length) {
+    currentStep = next;
+    render();
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key==='ArrowRight'||e.key==='ArrowDown') changeStep(1);
+  if (e.key==='ArrowLeft' ||e.key==='ArrowUp')   changeStep(-1);
+});
+
+render();
+</script>
+</body>
+</html>

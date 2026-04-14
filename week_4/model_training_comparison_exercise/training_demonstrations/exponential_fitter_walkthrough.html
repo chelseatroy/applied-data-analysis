@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Exponential Survival Model — How It Works</title>
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 24px;
+  font-family: Georgia, serif;
+  background: #081410;
+  color: #e4f0e8;
+}
+h1 { font-size: 1.8rem; font-weight: bold; color: #40b870; margin: 0 0 4px; }
+#subtitle { color: #307848; font-style: italic; margin-bottom: 20px; }
+#step-title { font-size: 1.3rem; font-weight: bold; color: #40b870; margin-bottom: 12px; min-height: 1.6em; }
+#panels { display: flex; gap: 24px; align-items: flex-start; margin-bottom: 20px; }
+#explanation {
+  background: #0c1e14; border: 1px solid #1a4828;
+  border-radius: 8px; padding: 16px 20px;
+  line-height: 1.7; margin-bottom: 20px; min-height: 110px;
+}
+#explanation code {
+  background: #0a1c10; padding: 1px 5px; border-radius: 3px;
+  font-size: 0.9em; color: #80d0a0;
+}
+#explanation pre {
+  background: #0a1c10; padding: 10px 14px; border-radius: 6px;
+  font-size: 0.88em; color: #80d0a0; overflow-x: auto;
+  border: 1px solid #1a4828; line-height: 1.5;
+}
+#nav { display: flex; align-items: center; gap: 16px; }
+button {
+  background: #0c2018; border: 1px solid #40b870;
+  color: #40b870; padding: 8px 20px;
+  border-radius: 6px; cursor: pointer; font-size: 1.1rem;
+}
+button:hover { background: #183828; }
+button:disabled { opacity: 0.3; cursor: default; }
+.dot {
+  width:10px; height:10px; border-radius:50%;
+  background:#1a3820; display:inline-block; margin:0 3px;
+  cursor:pointer; transition:background 0.2s;
+}
+.dot.active { background:#40b870; }
+#step-counter { color:#307848; font-size:0.9rem; margin-left:16px; }
+</style>
+</head>
+<body>
+<h1>Survival Analysis &amp; the Exponential Model</h1>
+<div id="subtitle">Estimating how long until an event, even when some data is incomplete</div>
+<div id="step-title"></div>
+<div id="panels">
+  <svg id="timeline" width="480" height="380" style="background:#0c1a10;border-radius:8px;flex-shrink:0"></svg>
+  <svg id="survival" width="340" height="380" style="background:#0c1a10;border-radius:8px;flex-shrink:0"></svg>
+</div>
+<div id="explanation"></div>
+<div id="nav">
+  <button id="prev">&#8592;</button>
+  <div id="dots"></div>
+  <button id="next">&#8594;</button>
+  <span id="step-counter"></span>
+</div>
+
+<script>
+// ─── Dataset ──────────────────────────────────────────────────────────────────
+// 12 subjects: event (1) or censored (0)
+// λ̂ = events / sum(durations) = 8 / 110 = 0.07273
+// E[T] = 1/λ̂ = 13.75   median = ln(2)/λ̂ = 9.53
+const subjects = [
+  {id:1,  t:2,  event:1, label:'S1'},
+  {id:2,  t:3,  event:1, label:'S2'},
+  {id:3,  t:4,  event:1, label:'S3'},
+  {id:4,  t:5,  event:1, label:'S4'},
+  {id:5,  t:6,  event:1, label:'S5'},
+  {id:6,  t:7,  event:1, label:'S6'},
+  {id:7,  t:9,  event:0, label:'S7'},  // censored (withdrew from study)
+  {id:8,  t:10, event:1, label:'S8'},
+  {id:9,  t:12, event:1, label:'S9'},
+  {id:10, t:14, event:0, label:'S10'}, // censored (study ended)
+  {id:11, t:17, event:0, label:'S11'},
+  {id:12, t:21, event:0, label:'S12'}
+];
+const N = subjects.length;
+const nEvents = subjects.filter(s=>s.event).length;
+const sumT = subjects.reduce((a,s)=>a+s.t, 0);
+const lambdaHat = nEvents / sumT;
+const meanSurv = 1/lambdaHat;
+const medianSurv = Math.log(2)/lambdaHat;
+
+// Kaplan-Meier estimate
+// Compute at each event time
+const eventTimes = subjects.filter(s=>s.event).map(s=>s.t).sort((a,b)=>a-b);
+let kmPts = [{t:0, s:1.0}];
+let nRisk = N;
+let sKM = 1.0;
+// We need to process all unique times in order
+const allTimes = [...new Set(subjects.map(s=>s.t))].sort((a,b)=>a-b);
+let atRisk = N;
+allTimes.forEach(t => {
+  const events = subjects.filter(s=>s.t===t&&s.event).length;
+  if (events > 0) {
+    sKM *= (atRisk - events) / atRisk;
+    kmPts.push({t, s:sKM});
+  }
+  const censored = subjects.filter(s=>s.t===t&&!s.event).length;
+  atRisk -= (events + censored);
+});
+// Add a final point for the plot
+kmPts.push({t:25, s:kmPts[kmPts.length-1].s});
+
+// ─── SVG coordinate helpers ────────────────────────────────────────────────────
+const TW=480, TH=380, TML=42, TMB=28, TMT=28, TMR=12;
+const T_MAX=25;
+const tx=t=>TML+(t/T_MAX)*(TW-TML-TMR);
+// Timeline: one row per subject
+const ROW_H=Math.floor((TH-TMT-TMB)/N);
+const ty_center=i=>TMT+i*ROW_H+ROW_H/2;
+
+// Survival chart
+const SW=340, SH=380, SML=50, SMB=40, SMT=28, SMR=16;
+const SIW=SW-SML-SMR, SIH=SH-SMT-SMB;
+const scx=t=>SML+(t/T_MAX)*SIW;
+const scy=s=>SH-SMB-(s*SIH);
+
+function el(tag, attrs={}, txt='') {
+  const e=document.createElementNS('http://www.w3.org/2000/svg',tag);
+  for(const[k,v] of Object.entries(attrs)) e.setAttribute(k,v);
+  if(txt) e.textContent=txt;
+  return e;
+}
+
+const COL_EVENT   = '#40b870';
+const COL_CENSOR  = '#d09030';
+const COL_LINE    = '#1e4828';
+const COL_PARAM   = '#40b870';
+const COL_KM      = '#80d0a0';
+
+// ─── Steps ────────────────────────────────────────────────────────────────────
+const steps = [
+  { mode:'intro', showParam:false, showKM:false,
+    title: "The Survival Data — Watching Time Pass",
+    html: `<p>We're following 12 subjects and recording how long until a <b>target event</b> occurs
+    (shown as <b style="color:${COL_EVENT}">●</b>). Each horizontal bar is one subject's observation period.</p>
+    <p>Some subjects experienced the event. Others were lost to follow-up before the study ended —
+    we know they hadn't experienced the event yet, but we don't know when (or if) they eventually will.
+    These are marked with <b style="color:${COL_CENSOR}">⊣</b>.</p>
+    <p>The goal: estimate the distribution of event times — specifically, how long we can <em>expect</em>
+    to wait until the event occurs.</p>` },
+
+  { mode:'censor', showParam:false, showKM:false,
+    title: "The Censoring Problem",
+    html: `<p>Subject 7 withdrew from the study at t=9 without experiencing the event.
+    Subject 10, 11, and 12 were still event-free when the study closed at t=14, 17, and 21.</p>
+    <p>These <b style="color:${COL_CENSOR}">censored observations</b> are not missing data —
+    they are <em>partial</em> data. We know the event had not yet occurred up to the censoring time.
+    Throwing them out would bias our estimate toward shorter times (survivors excluded).</p>
+    <p>The proper approach uses the observed portion of each trajectory. This is called
+    <b>right-censoring</b> — the true event time is somewhere to the right of the known window.</p>` },
+
+  { mode:'model', showParam:false, showKM:false,
+    title: "The Exponential Model",
+    html: `<p>The <b>exponential distribution</b> is the simplest survival model. It assumes a
+    <em>constant hazard rate</em> λ — the event is equally likely at every moment, regardless of
+    how long the subject has already survived.</p>
+    <p>The <b>survival function</b> — the probability of surviving past time t — is:</p>
+    <p style="text-align:center;font-size:1.05em"><b>S(t) = exp(−λt)</b></p>
+    <p>λ is the one parameter we need to estimate. A large λ means events happen quickly;
+    a small λ means long expected survival times.</p>` },
+
+  { mode:'mle', showParam:false, showKM:false,
+    title: "Maximum Likelihood Estimation — Finding λ",
+    html: `<p>The log-likelihood for right-censored exponential data is:</p>
+    <p style="text-align:center;font-family:monospace;font-size:0.9em">
+    ℓ(λ) = Σᵢ [ δᵢ·log(λ) − λ·tᵢ ]</p>
+    <p>where δᵢ=1 if subject i experienced the event, 0 if censored.
+    Differentiating and setting to zero yields a closed-form solution:</p>
+    <p style="text-align:center;font-size:1.05em">
+    <b>λ̂ = (number of events) / (total observed time)</b></p>
+    <p>This is beautifully intuitive: the event rate equals the observed event count divided by
+    the total person-time at risk. No gradient descent needed.</p>` },
+
+  { mode:'compute', showParam:false, showKM:false,
+    title: "Computing λ̂",
+    html: `<p>From our ${N} subjects:</p>
+    <p style="font-family:monospace;font-size:0.9em;margin-left:1em">
+    Events observed:   <b>${nEvents}</b><br>
+    Total person-time: <b>${sumT}</b> (sum of all observed durations)<br>
+    &nbsp;&nbsp; = 2+3+4+5+6+7+9+10+12+14+17+21 = ${sumT}</p>
+    <p style="text-align:center;font-size:1.05em;margin-top:8px">
+    λ̂ = ${nEvents} / ${sumT} = <b>${lambdaHat.toFixed(5)}</b></p>
+    <p>Implied quantities:<br>
+    E[T] = 1/λ̂ = <b>${meanSurv.toFixed(2)}</b> time units (mean event time)<br>
+    Median = ln(2)/λ̂ = <b>${medianSurv.toFixed(2)}</b> time units</p>` },
+
+  { mode:'compute', showParam:true, showKM:false,
+    title: "The Fitted Survival Curve",
+    html: `<p>The survival function <b style="color:${COL_PARAM}">S(t) = exp(−${lambdaHat.toFixed(4)}t)</b>
+    is plotted on the right. It starts at S(0) = 1.0 (everyone is alive at t=0) and decays
+    exponentially toward zero.</p>
+    <p>Key readings from the curve:</p>
+    <ul>
+      <li>S(${medianSurv.toFixed(1)}) ≈ 0.50 — there is a 50% chance the event has not yet occurred
+          by t≈${medianSurv.toFixed(1)} (the <b>median survival time</b>)</li>
+      <li>S(${meanSurv.toFixed(1)}) ≈ ${Math.exp(-lambdaHat*meanSurv).toFixed(2)} — roughly
+          ${(Math.exp(-lambdaHat*meanSurv)*100).toFixed(0)}% survive past the mean time</li>
+    </ul>` },
+
+  { mode:'compute', showParam:true, showKM:true,
+    title: "The Kaplan-Meier Estimate — A Non-Parametric Check",
+    html: `<p>The <b style="color:${COL_KM}">Kaplan-Meier (KM) estimate</b> (step function) is a non-parametric
+    survival curve that makes no distributional assumptions. At each event time, it reduces
+    by the fraction (1 − events/at-risk).</p>
+    <p>If the KM and the exponential parametric curve (<b style="color:${COL_PARAM}">smooth line</b>) align well,
+    the exponential assumption is reasonable. Large systematic gaps suggest the hazard is not
+    constant — the exponential model may be too restrictive.</p>
+    <p>Here the KM curve tracks the exponential reasonably well, with typical random variation
+    around it.</p>` },
+
+  { mode:'compute', showParam:true, showKM:true,
+    title: "Using lifelines in Python",
+    html: `<p>The <code>lifelines</code> library replicates this workflow in a few lines:</p>
+    <pre>from lifelines import ExponentialFitter, KaplanMeierFitter
+
+durations = [2,3,4,5,6,7,9,10,12,14,17,21]
+events    = [1,1,1,1,1,1,0, 1, 1, 0, 0, 0]
+
+# Parametric exponential fit
+ef = ExponentialFitter()
+ef.fit(durations, event_observed=events)
+ef.print_summary()          # shows λ̂, CI, AIC
+ef.plot_survival_function() # S(t) with confidence band
+
+# Non-parametric comparison
+kmf = KaplanMeierFitter()
+kmf.fit(durations, event_observed=events)
+kmf.plot_survival_function()</pre>
+    <p><code>ef.lambda_</code> returns λ̂ = <b>${lambdaHat.toFixed(5)}</b>.
+    <code>ef.median_survival_time_</code> returns the median ≈ <b>${medianSurv.toFixed(2)}</b>.</p>` }
+];
+
+// ─── Timeline render ───────────────────────────────────────────────────────────
+function renderTimeline(si) {
+  const s=steps[si];
+  const svg=document.getElementById('timeline');
+  svg.innerHTML='';
+
+  // Title
+  svg.appendChild(el('text',{x:TW/2,y:16,'text-anchor':'middle',fill:'#307848','font-size':11,'font-style':'italic'},
+    'Observed durations (● = event, ⊣ = censored)'));
+
+  // Time axis
+  svg.appendChild(el('line',{x1:tx(0),y1:TH-TMB,x2:tx(T_MAX),y2:TH-TMB,stroke:'#1e4828','stroke-width':1.5}));
+  for (let t=0;t<=T_MAX;t+=5) {
+    svg.appendChild(el('line',{x1:tx(t),y1:TH-TMB,x2:tx(t),y2:TH-TMB+5,stroke:'#1e4828','stroke-width':1}));
+    svg.appendChild(el('text',{x:tx(t),y:TH-TMB+17,'text-anchor':'middle',fill:'#407848','font-size':10},String(t)));
+  }
+  svg.appendChild(el('text',{x:TW/2,y:TH-4,'text-anchor':'middle',fill:'#407848','font-size':11},'Time'));
+
+  // Draw each subject
+  subjects.forEach((subj,i) => {
+    const cy = ty_center(i);
+    const col = subj.event ? COL_EVENT : COL_CENSOR;
+    const highlight = (s.mode==='censor') && !subj.event;
+    const fade = (s.mode==='censor') && subj.event;
+
+    // Horizontal bar
+    svg.appendChild(el('line',{x1:tx(0),y1:cy,x2:tx(subj.t),y2:cy,
+      stroke: highlight ? COL_CENSOR : fade ? '#1a3820' : '#2a5a38',
+      'stroke-width': highlight ? 2 : 1.5,
+      opacity: fade ? 0.3 : 1
+    }));
+
+    // Subject label
+    svg.appendChild(el('text',{x:TML-4,y:cy+4,'text-anchor':'end',
+      fill: fade ? '#1e3828' : '#507860','font-size':9.5}, subj.label));
+
+    // Duration label
+    svg.appendChild(el('text',{x:tx(subj.t)+6,y:cy+4,'text-anchor':'start',
+      fill: highlight ? COL_CENSOR : fade ? '#1a3820' : '#406848','font-size':9},
+      `t=${subj.t}`));
+
+    // Event marker (filled circle) or censoring tick
+    if (subj.event) {
+      svg.appendChild(el('circle',{cx:tx(subj.t),cy,r:4.5,
+        fill: fade ? '#1a3820' : COL_EVENT,
+        stroke:'#0c1a10','stroke-width':1,
+        opacity: fade ? 0.3 : 1}));
+    } else {
+      // Censoring tick: vertical line
+      svg.appendChild(el('line',{x1:tx(subj.t),y1:cy-6,x2:tx(subj.t),y2:cy+6,
+        stroke: highlight ? COL_CENSOR : '#406848',
+        'stroke-width': highlight ? 2.5 : 1.5}));
+      svg.appendChild(el('line',{x1:tx(subj.t),y1:cy,x2:tx(subj.t)+8,y2:cy,
+        stroke: highlight ? COL_CENSOR : '#406848',
+        'stroke-width': highlight ? 2 : 1.5}));
+    }
+  });
+
+  // Legend
+  svg.appendChild(el('circle',{cx:TML,cy:TH-8,r:4,fill:COL_EVENT}));
+  svg.appendChild(el('text',{x:TML+8,y:TH-4,fill:COL_EVENT,'font-size':10},'event observed'));
+  svg.appendChild(el('line',{x1:TML+105,y1:TH-8,x2:TML+105,y2:TH-2,stroke:COL_CENSOR,'stroke-width':1.5}));
+  svg.appendChild(el('line',{x1:TML+105,y1:TH-5,x2:TML+112,y2:TH-5,stroke:COL_CENSOR,'stroke-width':1.5}));
+  svg.appendChild(el('text',{x:TML+116,y:TH-4,fill:COL_CENSOR,'font-size':10},'censored'));
+}
+
+// ─── Survival curve render ─────────────────────────────────────────────────────
+function renderSurvival(si) {
+  const s=steps[si];
+  const svg=document.getElementById('survival');
+  svg.innerHTML='';
+
+  svg.appendChild(el('text',{x:SW/2,y:16,'text-anchor':'middle',fill:'#307848','font-size':11,'font-style':'italic'},
+    'Survival function S(t) = P(T > t)'));
+
+  // Grid
+  for (let t=0;t<=T_MAX;t+=5) {
+    svg.appendChild(el('line',{x1:scx(t),y1:scy(0),x2:scx(t),y2:scy(1),stroke:'#0e2818','stroke-width':0.5,'stroke-dasharray':'2,4'}));
+    svg.appendChild(el('text',{x:scx(t),y:SH-SMB+16,'text-anchor':'middle',fill:'#306838','font-size':10},String(t)));
+  }
+  for (let s2=0;s2<=1.0;s2+=0.2) {
+    svg.appendChild(el('line',{x1:scx(0),y1:scy(s2),x2:scx(T_MAX),y2:scy(s2),stroke:'#0e2818','stroke-width':0.5,'stroke-dasharray':'2,4'}));
+    svg.appendChild(el('text',{x:SML-5,y:scy(s2)+4,'text-anchor':'end',fill:'#306838','font-size':10},s2.toFixed(1)));
+  }
+  svg.appendChild(el('line',{x1:scx(0),y1:scy(0),x2:scx(T_MAX),y2:scy(0),stroke:'#1e4828','stroke-width':1.5}));
+  svg.appendChild(el('line',{x1:scx(0),y1:scy(0),x2:scx(0),y2:scy(1),stroke:'#1e4828','stroke-width':1.5}));
+  svg.appendChild(el('text',{x:SW/2,y:SH-4,'text-anchor':'middle',fill:'#306838','font-size':11},'Time t'));
+  svg.appendChild(el('text',{x:11,y:SH/2,'text-anchor':'middle',fill:'#306838','font-size':11,
+    transform:`rotate(-90 11 ${SH/2})`},'S(t)'));
+
+  if (!s.showParam && !s.showKM) {
+    svg.appendChild(el('text',{x:SW/2,y:SH/2,'text-anchor':'middle',fill:'#1a3820','font-size':13},
+      '← Survival curve'));
+    return;
+  }
+
+  // Kaplan-Meier step function
+  if (s.showKM) {
+    const kmPath=[];
+    for (let i=0;i<kmPts.length-1;i++) {
+      const {t:t0,s:s0}=kmPts[i], {t:t1}=kmPts[i+1];
+      kmPath.push(`${scx(t0)},${scy(s0)} ${scx(t1)},${scy(s0)}`);
+      if (i<kmPts.length-2) kmPath.push(`${scx(t1)},${scy(kmPts[i+1].s)}`);
+    }
+    svg.appendChild(el('polyline',{points:kmPath.join(' '),fill:'none',stroke:COL_KM,'stroke-width':2.5}));
+  }
+
+  // Parametric exponential curve
+  if (s.showParam) {
+    const pts=[];
+    for (let j=0;j<=200;j++) {
+      const t=j/200*T_MAX;
+      pts.push(`${scx(t)},${scy(Math.exp(-lambdaHat*t))}`);
+    }
+    svg.appendChild(el('polyline',{points:pts.join(' '),fill:'none',stroke:COL_PARAM,'stroke-width':2.5}));
+
+    // Median annotation
+    const tMed=medianSurv;
+    svg.appendChild(el('line',{x1:scx(0),y1:scy(0.5),x2:scx(tMed),y2:scy(0.5),
+      stroke:'#f0c040','stroke-width':1,'stroke-dasharray':'3,3',opacity:0.7}));
+    svg.appendChild(el('line',{x1:scx(tMed),y1:scy(0.5),x2:scx(tMed),y2:scy(0),
+      stroke:'#f0c040','stroke-width':1,'stroke-dasharray':'3,3',opacity:0.7}));
+    svg.appendChild(el('circle',{cx:scx(tMed),cy:scy(0.5),r:4,fill:'#f0c040'}));
+    svg.appendChild(el('text',{x:scx(tMed)+5,y:scy(0.5)-8,fill:'#f0c040','font-size':9.5},
+      `median = ${tMed.toFixed(1)}`));
+    svg.appendChild(el('text',{x:scx(tMed)+5,y:scy(0.5)+14,fill:'#f0c040','font-size':9},
+      `λ̂=${lambdaHat.toFixed(4)}`));
+  }
+
+  // Legend
+  if (s.showParam && s.showKM) {
+    svg.appendChild(el('line',{x1:SML,y1:SH-8,x2:SML+20,y2:SH-8,stroke:COL_PARAM,'stroke-width':2.5}));
+    svg.appendChild(el('text',{x:SML+24,y:SH-4,fill:COL_PARAM,'font-size':10},'Exponential fit'));
+    svg.appendChild(el('line',{x1:SML+110,y1:SH-8,x2:SML+130,y2:SH-8,stroke:COL_KM,'stroke-width':2.5}));
+    svg.appendChild(el('text',{x:SML+134,y:SH-4,fill:COL_KM,'font-size':10},'Kaplan-Meier'));
+  }
+}
+
+// ─── Navigation ───────────────────────────────────────────────────────────────
+let cur=0;
+function updateNav() {
+  const dotsEl=document.getElementById('dots');
+  dotsEl.innerHTML='';
+  steps.forEach((_,i)=>{
+    const d=document.createElement('span');
+    d.className='dot'+(i===cur?' active':'');
+    d.addEventListener('click',()=>{cur=i;render();});
+    dotsEl.appendChild(d);
+  });
+  document.getElementById('prev').disabled=cur===0;
+  document.getElementById('next').disabled=cur===steps.length-1;
+  document.getElementById('step-counter').textContent=`${cur+1} / ${steps.length}`;
+}
+function render() {
+  const s=steps[cur];
+  document.getElementById('step-title').textContent=s.title;
+  document.getElementById('explanation').innerHTML=s.html;
+  renderTimeline(cur);
+  renderSurvival(cur);
+  updateNav();
+}
+document.getElementById('prev').addEventListener('click',()=>{if(cur>0){cur--;render();}});
+document.getElementById('next').addEventListener('click',()=>{if(cur<steps.length-1){cur++;render();}});
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowLeft'&&cur>0){cur--;render();}
+  if(e.key==='ArrowRight'&&cur<steps.length-1){cur++;render();}
+});
+render();
+</script>
+</body>
+</html>

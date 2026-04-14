@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Poisson Regression — How It Works</title>
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 24px;
+  font-family: Georgia, serif;
+  background: #08141a;
+  color: #e8f0f4;
+}
+h1 { font-size: 1.8rem; font-weight: bold; color: #40a0c0; margin: 0 0 4px; }
+#subtitle { color: #407888; font-style: italic; margin-bottom: 20px; }
+#step-title { font-size: 1.3rem; font-weight: bold; color: #40a0c0; margin-bottom: 12px; min-height: 1.6em; }
+#panels { display: flex; gap: 24px; align-items: flex-start; margin-bottom: 20px; }
+#explanation {
+  background: #0c1e28; border: 1px solid #1a4860;
+  border-radius: 8px; padding: 16px 20px;
+  line-height: 1.7; margin-bottom: 20px; min-height: 110px;
+}
+#explanation code { background:#0a2030; padding:1px 5px; border-radius:3px; font-size:0.92em; }
+#nav { display: flex; align-items: center; gap: 16px; }
+button {
+  background: #0c2030; border: 1px solid #40a0c0;
+  color: #40a0c0; padding: 8px 20px;
+  border-radius: 6px; cursor: pointer; font-size: 1.1rem;
+}
+button:hover { background: #183848; }
+button:disabled { opacity: 0.3; cursor: default; }
+.dot {
+  width:10px; height:10px; border-radius:50%;
+  background:#1a3848; display:inline-block; margin:0 3px;
+  cursor:pointer; transition:background 0.2s;
+}
+.dot.active { background:#40a0c0; }
+#step-counter { color:#407888; font-size:0.9rem; margin-left:16px; }
+</style>
+</head>
+<body>
+<h1>Poisson Regression</h1>
+<div id="subtitle">Fitting a model for count data with a log link</div>
+<div id="step-title"></div>
+<div id="panels">
+  <svg id="scatter"  width="480" height="380" style="background:#0a1820;border-radius:8px;flex-shrink:0"></svg>
+  <svg id="losschart" width="340" height="380" style="background:#0a1820;border-radius:8px;flex-shrink:0"></svg>
+</div>
+<div id="explanation"></div>
+<div id="nav">
+  <button id="prev">&#8592;</button>
+  <div id="dots"></div>
+  <button id="next">&#8594;</button>
+  <span id="step-counter"></span>
+</div>
+
+<script>
+// ─── Dataset ──────────────────────────────────────────────────────────────────
+const xs = [1,2,3,4,5,6];
+const ys = [2,3,5,8,14,22];
+const n  = xs.length;
+
+// ─── Gradient Descent ─────────────────────────────────────────────────────────
+// Model: mu_i = exp(w*x_i + b)
+// NLL (ignoring constants): sum[ exp(w*x+b) - y*(w*x+b) ]
+// grad_w = sum[ x*(exp(w*x+b) - y) ]
+// grad_b = sum[ exp(w*x+b) - y ]
+
+function computeNLL(w, b) {
+  let nll = 0;
+  for (let i=0;i<n;i++) nll += Math.exp(w*xs[i]+b) - ys[i]*(w*xs[i]+b);
+  return nll;
+}
+function gradient(w, b) {
+  let gw=0, gb=0;
+  for (let i=0;i<n;i++) {
+    const mu = Math.exp(w*xs[i]+b);
+    gw += xs[i]*(mu - ys[i]);
+    gb += mu - ys[i];
+  }
+  return {gw, gb};
+}
+
+// Run GD and store history
+const LR = 0.001;
+let w=0, b=0;
+const hist = [{w, b, nll:computeNLL(w,b), iter:0}];
+for (let t=1; t<=150; t++) {
+  const {gw,gb} = gradient(w,b);
+  w -= LR*gw;
+  b -= LR*gb;
+  hist.push({w, b, nll:computeNLL(w,b), iter:t});
+}
+
+// Snapshot indices for steps
+const SNAPS = [0, 1, 3, 10, 30, 80, 150];
+
+// ─── SVG coordinate systems ────────────────────────────────────────────────────
+// Scatter: x in [0,7], y in [0,30]
+const SW=480, SH=380, SML=52, SMB=44, SMT=28, SMR=16;
+const SIW=SW-SML-SMR, SIH=SH-SMT-SMB;
+const scx = v => SML + (v/7)*SIW;
+const scy = v => SH-SMB - (v/30)*SIH;
+
+// Loss chart: iter in [0,80] shown, nll in [nllMin-5, nllMax+2]
+const nllVals = hist.slice(0,81).map(h=>h.nll);
+const NLL_MIN = Math.min(...nllVals);
+const NLL_MAX = Math.max(...nllVals);
+const LW=340, LH=380, LML=54, LMB=40, LMT=28, LMR=16;
+const LIW=LW-LML-LMR, LIH=LH-LMT-LMB;
+const lcx = t => LML + (t/80)*LIW;
+const lcy = v => LH-LMB - (v - NLL_MIN - 5) / (NLL_MAX - NLL_MIN + 8) * LIH;
+
+function el(tag, attrs={}, txt='') {
+  const e = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [k,v] of Object.entries(attrs)) e.setAttribute(k,v);
+  if (txt) e.textContent = txt;
+  return e;
+}
+
+// ─── Steps ────────────────────────────────────────────────────────────────────
+const COL_CURVE  = '#40a0c0';
+const COL_POINTS = '#f0c040';
+const COL_RESID  = '#a06820';
+const COL_LOSS   = '#e07050';
+
+const steps = [
+  { hi: 0,
+    title: "Count Data — The Problem",
+    html: `<p>We observe a count response at six values of a predictor.
+    The counts grow rapidly — this looks exponential, not linear.</p>
+    <p>Linear regression predicts any real number, including negatives, which makes no
+    sense for counts. We need a model that is always ≥ 0 and naturally captures
+    multiplicative growth.</p>` },
+
+  { hi: 0,
+    title: "The Poisson Model — A Log Link",
+    html: `<p>Poisson regression models the <b>log of the expected count</b> as a linear function:</p>
+    <p style="text-align:center;font-size:1.05em">log(μ) = wx + b &nbsp;→&nbsp; μ = exp(wx + b)</p>
+    <p>This ensures μ > 0 for all x, and the exponential shape naturally fits multiplicatively
+    growing counts. We learn <em>w</em> and <em>b</em> by maximizing the Poisson log-likelihood:</p>
+    <p style="text-align:center;font-family:monospace;font-size:0.9em">ℓ(w,b) = Σ [ yᵢ(wxᵢ+b) − exp(wxᵢ+b) ]</p>` },
+
+  { hi: 0,
+    title: "Iteration 0 — Initial Curve",
+    html: `<p>We start with <b>w = 0, b = 0</b>. The predicted curve is μ = exp(0) = <b>1</b> everywhere —
+    a flat horizontal line. The Poisson NLL at this point is <b>${hist[0].nll.toFixed(2)}</b>.</p>
+    <p>Every training point is far above the prediction. The gradients are large and
+    negative, so w and b will both increase substantially in the first step.</p>` },
+
+  { hi: 1,
+    title: "Iteration 1 — First Gradient Step",
+    html: `<p>After one gradient descent step (lr = ${LR}):<br>
+    w = <b>${hist[1].w.toFixed(4)}</b>, b = <b>${hist[1].b.toFixed(4)}</b></p>
+    <p>NLL drops from ${hist[0].nll.toFixed(2)} to <b>${hist[1].nll.toFixed(2)}</b> —
+    an enormous jump. The curve now rises steeply, already passing through
+    several data points. Most of the learning happens in the first few iterations.</p>` },
+
+  { hi: 3,
+    title: "Iteration 3 — Nearly There",
+    html: `<p>w = <b>${hist[3].w.toFixed(4)}</b>, b = <b>${hist[3].b.toFixed(4)}</b><br>
+    NLL = <b>${hist[3].nll.toFixed(2)}</b></p>
+    <p>After just 3 steps the curve is already close to the data. This is typical for
+    Poisson regression on well-scaled data — the log link makes the loss landscape
+    well-behaved, and gradient descent converges quickly compared to many neural networks.</p>` },
+
+  { hi: 10,
+    title: "Iteration 10 — Fine-Tuning",
+    html: `<p>w = <b>${hist[10].w.toFixed(4)}</b>, b = <b>${hist[10].b.toFixed(4)}</b><br>
+    NLL = <b>${hist[10].nll.toFixed(2)}</b></p>
+    <p>The curve fits the data well now. The gradient magnitudes are much smaller than in
+    early iterations — the parameter updates are tiny adjustments rather than large jumps.
+    This is the long "tail" of convergence.</p>` },
+
+  { hi: 80,
+    title: "Iteration 80 — Converged",
+    html: `<p>w = <b>${hist[80].w.toFixed(4)}</b>, b = <b>${hist[80].b.toFixed(4)}</b><br>
+    NLL = <b>${hist[80].nll.toFixed(2)}</b></p>
+    <p>The model has converged. The curve passes smoothly through the data, capturing the
+    exponential growth pattern. The optimal weight w ≈ 0.494 means each unit increase in x
+    multiplies the expected count by exp(0.494) ≈ <b>1.64×</b>.</p>` },
+
+  { hi: 150,
+    title: "Interpretation",
+    html: `<p>Final model: <b>log(μ) = ${hist[150].w.toFixed(3)}x + ${hist[150].b.toFixed(3)}</b></p>
+    <table style="width:100%;border-collapse:collapse;font-size:0.9em;margin-top:6px">
+      <tr style="color:#407888">
+        <th style="text-align:left;padding:3px 8px">x</th>
+        <th style="text-align:left;padding:3px 8px">Observed y</th>
+        <th style="text-align:left;padding:3px 8px">Predicted μ</th>
+      </tr>
+      ${xs.map((x,i)=>`<tr><td style="padding:3px 8px">${x}</td>
+        <td style="padding:3px 8px">${ys[i]}</td>
+        <td style="padding:3px 8px">${Math.exp(hist[150].w*x+hist[150].b).toFixed(2)}</td></tr>`).join('')}
+    </table>` }
+];
+
+// ─── Scatter render ────────────────────────────────────────────────────────────
+function renderScatter(si) {
+  const s = steps[si];
+  const h = hist[s.hi];
+  const svg = document.getElementById('scatter');
+  svg.innerHTML = '';
+
+  // Grid
+  for (let x=0;x<=7;x++) {
+    svg.appendChild(el('line',{x1:scx(x),y1:scy(0),x2:scx(x),y2:scy(30),stroke:'#0e2838','stroke-width':0.5,'stroke-dasharray':'2,4'}));
+    svg.appendChild(el('text',{x:scx(x),y:SH-SMB+16,'text-anchor':'middle',fill:'#406878','font-size':11},String(x)));
+  }
+  for (let y=0;y<=30;y+=5) {
+    svg.appendChild(el('line',{x1:scx(0),y1:scy(y),x2:scx(7),y2:scy(y),stroke:'#0e2838','stroke-width':0.5,'stroke-dasharray':'2,4'}));
+    svg.appendChild(el('text',{x:SML-8,y:scy(y)+4,'text-anchor':'end',fill:'#406878','font-size':11},String(y)));
+  }
+  // Axes
+  svg.appendChild(el('line',{x1:scx(0),y1:scy(0),x2:scx(7),y2:scy(0),stroke:'#184858','stroke-width':1.5}));
+  svg.appendChild(el('line',{x1:scx(0),y1:scy(0),x2:scx(0),y2:scy(30),stroke:'#184858','stroke-width':1.5}));
+  svg.appendChild(el('text',{x:SW/2,y:SH-4,'text-anchor':'middle',fill:'#406878','font-size':12},'x'));
+  svg.appendChild(el('text',{x:11,y:SH/2,'text-anchor':'middle',fill:'#406878','font-size':12,transform:`rotate(-90 11 ${SH/2})`},'count (y)'));
+  svg.appendChild(el('text',{x:SW/2,y:18,'text-anchor':'middle',fill:'#407888','font-size':11,'font-style':'italic'},'Count vs Predictor'));
+
+  // Predicted curve: mu = exp(w*x + b) for x in [0, 7]
+  if (si >= 2) {
+    const pts=[];
+    for (let t=0;t<=140;t++) {
+      const xv = t/20;
+      const yv = Math.exp(h.w*xv+h.b);
+      if (yv<=30+1) pts.push(`${scx(xv)},${scy(Math.min(yv,30))}`);
+    }
+    if (pts.length>1) svg.appendChild(el('polyline',{points:pts.join(' '),fill:'none',stroke:COL_CURVE,'stroke-width':2.5}));
+
+    // Residual lines
+    xs.forEach((x,i)=>{
+      const mu = Math.exp(h.w*x+h.b);
+      if (Math.min(mu,ys[i])<=30) {
+        svg.appendChild(el('line',{x1:scx(x),y1:scy(Math.min(ys[i],30)),x2:scx(x),y2:scy(Math.min(mu,30)),
+          stroke:COL_RESID,'stroke-width':1.2,'stroke-dasharray':'3,3',opacity:0.7}));
+      }
+    });
+  }
+
+  // Data points
+  xs.forEach((x,i)=>{
+    svg.appendChild(el('circle',{cx:scx(x),cy:scy(ys[i]),r:6,fill:COL_POINTS,stroke:'#08141a','stroke-width':1}));
+    svg.appendChild(el('text',{x:scx(x),y:scy(ys[i])-10,'text-anchor':'middle',fill:COL_POINTS,'font-size':10},`(${x},${ys[i]})`));
+  });
+
+  // NLL annotation
+  if (si>=2) {
+    svg.appendChild(el('text',{x:SW-SMR-4,y:36,'text-anchor':'end',fill:COL_LOSS,'font-size':11},
+      `w=${h.w.toFixed(3)} b=${h.b.toFixed(3)}`));
+    svg.appendChild(el('text',{x:SW-SMR-4,y:50,'text-anchor':'end',fill:COL_LOSS,'font-size':11},
+      `NLL = ${h.nll.toFixed(2)}`));
+  }
+}
+
+// ─── Loss chart render ─────────────────────────────────────────────────────────
+function renderLoss(si) {
+  const s = steps[si];
+  const svg = document.getElementById('losschart');
+  svg.innerHTML = '';
+
+  svg.appendChild(el('text',{x:LW/2,y:18,'text-anchor':'middle',fill:'#407888','font-size':11,'font-style':'italic'},
+    'Poisson NLL over training (iter 0–80)'));
+
+  // Axes
+  const yTicks = [-90,-80,-70,-60,-50,-40,-30,-20,-10,0,10];
+  yTicks.forEach(v=>{
+    if (v>=NLL_MIN-6 && v<=NLL_MAX+3) {
+      svg.appendChild(el('line',{x1:LML,y1:lcy(v),x2:LW-LMR,y2:lcy(v),stroke:'#0e2838','stroke-width':0.5,'stroke-dasharray':'2,4'}));
+      svg.appendChild(el('text',{x:LML-4,y:lcy(v)+4,'text-anchor':'end',fill:'#406878','font-size':10},String(v)));
+    }
+  });
+  const xTicks=[0,20,40,60,80];
+  xTicks.forEach(v=>{
+    svg.appendChild(el('line',{x1:lcx(v),y1:lcy(NLL_MIN-4),x2:lcx(v),y2:lcy(NLL_MAX+2),stroke:'#0e2838','stroke-width':0.5,'stroke-dasharray':'2,4'}));
+    svg.appendChild(el('text',{x:lcx(v),y:LH-LMB+16,'text-anchor':'middle',fill:'#406878','font-size':10},String(v)));
+  });
+  svg.appendChild(el('line',{x1:LML,y1:lcy(NLL_MIN-4),x2:LML,y2:lcy(NLL_MAX+2),stroke:'#184858','stroke-width':1.5}));
+  svg.appendChild(el('line',{x1:LML,y1:LH-LMB,x2:LW-LMR,y2:LH-LMB,stroke:'#184858','stroke-width':1.5}));
+  svg.appendChild(el('text',{x:LW/2,y:LH-4,'text-anchor':'middle',fill:'#406878','font-size':11},'Iteration'));
+  svg.appendChild(el('text',{x:11,y:LH/2,'text-anchor':'middle',fill:'#406878','font-size':11,
+    transform:`rotate(-90 11 ${LH/2})`},'NLL'));
+
+  // Loss curve
+  if (si>=2) {
+    const pts=[];
+    for (let t=0;t<=80;t++) {
+      const v=hist[t].nll;
+      if (v>=NLL_MIN-5 && v<=NLL_MAX+3) pts.push(`${lcx(t)},${lcy(v)}`);
+    }
+    if (pts.length>1) svg.appendChild(el('polyline',{points:pts.join(' '),fill:'none',stroke:COL_LOSS,'stroke-width':2}));
+
+    // Current position marker
+    const curT = Math.min(s.hi, 80);
+    const curV = hist[s.hi].nll;
+    if (curV>=NLL_MIN-5 && curV<=NLL_MAX+3) {
+      svg.appendChild(el('circle',{cx:lcx(curT),cy:lcy(curV),r:7,fill:'#f0c040',stroke:'#08141a','stroke-width':1.5}));
+      svg.appendChild(el('text',{x:lcx(curT),y:lcy(curV)-12,'text-anchor':'middle',fill:'#f0c040','font-size':10},
+        `iter ${s.hi}`));
+    }
+  } else {
+    svg.appendChild(el('text',{x:LW/2,y:LH/2,'text-anchor':'middle',fill:'#1a3848','font-size':13},'← Loss curve'));
+  }
+}
+
+// ─── Navigation ───────────────────────────────────────────────────────────────
+let cur=0;
+function updateNav() {
+  const dotsEl=document.getElementById('dots');
+  dotsEl.innerHTML='';
+  steps.forEach((_,i)=>{
+    const d=document.createElement('span');
+    d.className='dot'+(i===cur?' active':'');
+    d.addEventListener('click',()=>{cur=i;render();});
+    dotsEl.appendChild(d);
+  });
+  document.getElementById('prev').disabled=cur===0;
+  document.getElementById('next').disabled=cur===steps.length-1;
+  document.getElementById('step-counter').textContent=`${cur+1} / ${steps.length}`;
+}
+function render() {
+  const s=steps[cur];
+  document.getElementById('step-title').textContent=s.title;
+  document.getElementById('explanation').innerHTML=s.html;
+  renderScatter(cur);
+  renderLoss(cur);
+  updateNav();
+}
+document.getElementById('prev').addEventListener('click',()=>{if(cur>0){cur--;render();}});
+document.getElementById('next').addEventListener('click',()=>{if(cur<steps.length-1){cur++;render();}});
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowLeft'&&cur>0){cur--;render();}
+  if(e.key==='ArrowRight'&&cur<steps.length-1){cur++;render();}
+});
+render();
+</script>
+</body>
+</html>
