@@ -6,7 +6,7 @@
 <style>
 * { box-sizing: border-box; }
 body {
-  margin: 0; padding: 24px;
+  margin: 0; padding: 24px 24px 80px;
   font-family: Georgia, serif;
   background: #faf6f5;
   color: #2e1a15;
@@ -22,7 +22,7 @@ h1 { font-size: 1.8rem; font-weight: bold; color: #b04030; margin: 0 0 4px; }
 }
 #explanation ul { margin: 6px 0; padding-left: 20px; }
 #explanation li { margin: 4px 0; }
-#nav { display: flex; align-items: center; gap: 16px; }
+#nav { position: fixed; bottom: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: center; gap: 16px; padding: 12px 24px 16px; background: #faf6f5; border-top: 1px solid #e0b0a0; z-index: 100; }
 button {
   background: #faf0ee; border: 1px solid #b04030;
   color: #b04030; padding: 8px 20px;

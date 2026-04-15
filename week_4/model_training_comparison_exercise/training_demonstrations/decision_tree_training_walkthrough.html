@@ -36,7 +36,7 @@ header h1 { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.3px; }
 .content {
   max-width: 1120px;
   margin: 0 auto;
-  padding: 20px 24px 32px;
+  padding: 20px 24px 80px;
 }
 
 .main-row {
@@ -118,11 +118,18 @@ header h1 { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.3px; }
 #tree-panel svg { display: block; width: 100%; }
 
 .nav-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
   display: flex;
   justify-content: center;
   align-items: center;
   gap: 20px;
-  padding: 4px 0 16px;
+  padding: 12px 0 16px;
+  background: #f4f8fb;
+  border-top: 1px solid #aacedd;
+  z-index: 100;
 }
 .nav-bar button {
   background: #1b6b8a; color: white;

@@ -10,7 +10,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 header { background:linear-gradient(135deg,#2a5c45,#1a3d2e); color:white; padding:18px 36px; display:flex; justify-content:space-between; align-items:center; box-shadow:0 2px 10px rgba(0,0,0,0.3); }
 header h1 { font-size:1.45rem; font-weight:700; letter-spacing:-0.3px; }
 #step-counter { background:rgba(255,255,255,0.18); padding:5px 16px; border-radius:20px; font-size:0.88rem; font-weight:600; }
-.content { max-width:1120px; margin:0 auto; padding:20px 24px 32px; }
+.content { max-width:1120px; margin:0 auto; padding:20px 24px 80px; }
 .main-row { display:flex; gap:20px; margin-bottom:20px; }
 .panel { background:#ffffff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.1); overflow:hidden; }
 .panel-header { background:#daeee4; border-bottom:1px solid #9acfb5; padding:10px 18px; font-size:0.75rem; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:#2a5c45; }
@@ -29,7 +29,7 @@ header h1 { font-size:1.45rem; font-weight:700; letter-spacing:-0.3px; }
 .callout { background:#d4eee0; border-radius:8px; padding:9px 14px; margin-top:10px; font-size:0.88rem; color:#2a5c45; line-height:1.6; }
 #loss-panel { margin-bottom:20px; }
 #loss-panel svg { display:block; width:100%; }
-.nav-bar { display:flex; justify-content:center; align-items:center; gap:20px; padding:4px 0 16px; }
+.nav-bar { position:fixed; bottom:0; left:0; right:0; display:flex; justify-content:center; align-items:center; gap:20px; padding:12px 0 16px; background:#f5faf7; border-top:1px solid #c8e0d0; z-index:100; }
 .nav-bar button { background:#2a5c45; color:white; border:none; padding:11px 30px; font-size:0.97rem; font-weight:600; border-radius:8px; cursor:pointer; transition:background 0.15s,transform 0.1s; }
 .nav-bar button:hover { background:#1e4433; transform:translateY(-1px); }
 .nav-bar button:active { transform:translateY(0); }
