@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Neural Networks on MNIST — How a Network Learns</title>
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 24px 24px 80px;
+  font-family: Georgia, serif;
+  background: #faf6f5;
+  color: #2e1a15;
+}
+h1 { font-size: 1.8rem; font-weight: bold; color: #b04030; margin: 0 0 4px; }
+#subtitle { color: #805030; font-style: italic; margin-bottom: 20px; }
+#step-title { font-size: 1.3rem; font-weight: bold; color: #b04030; margin-bottom: 12px; min-height: 1.6em; }
+#panels { display: flex; gap: 24px; align-items: flex-start; margin-bottom: 20px; }
+#explanation {
+  background: #ffffff; border: 1px solid #e0b0a0;
+  border-radius: 8px; padding: 16px 20px;
+  line-height: 1.7; margin-bottom: 20px; min-height: 110px;
+}
+#explanation ul { margin: 6px 0; padding-left: 20px; }
+#explanation li { margin: 4px 0; }
+#nav { position: fixed; bottom: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: center; gap: 16px; padding: 12px 24px 16px; background: #faf6f5; border-top: 1px solid #e0b0a0; z-index: 100; }
+button {
+  background: #faf0ee; border: 1px solid #b04030;
+  color: #b04030; padding: 8px 20px;
+  border-radius: 6px; cursor: pointer; font-size: 1.1rem;
+}
+button:hover { background: #f5d8d0; }
+button:disabled { opacity: 0.3; cursor: default; }
+.dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #f0c8b8; display: inline-block; margin: 0 3px;
+  cursor: pointer; transition: background 0.2s;
+}
+.dot.active { background: #b04030; }
+#step-counter { color: #805030; font-size: 0.9rem; margin-left: 16px; }
+</style>
+</head>
+<body>
+<h1>Neural Networks</h1>
+<div id="subtitle">Learning to read handwritten digits (MNIST)</div>
+<div id="step-title"></div>
+<div id="panels">
+  <svg id="netsvg"   width="480" height="380" style="background:#200e08;border-radius:8px;flex-shrink:0"></svg>
+  <svg id="rightsvg" width="340" height="380" style="background:#200e08;border-radius:8px;flex-shrink:0"></svg>
+</div>
+<div id="explanation"></div>
+<div id="nav">
+  <button id="prev">&#8592;</button>
+  <div id="dots"></div>
+  <button id="next">&#8594;</button>
+  <span id="step-counter"></span>
+</div>
+
+<script>
+// ─── Palette ──────────────────────────────────────────────────────────────────
+const ICOL = '#4a9fd4';
+const HCOL = '#e08040';
+const OCOL = '#50c878';
+const GOLD = '#f0c040';
+const AXIS = '#6a3020';
+const TICK = '#806050';
+
+// ─── Data ─────────────────────────────────────────────────────────────────────
+// MNIST index 11, digit 5
+const DIGIT5 = [
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.122,0.157,0.506,0.918,0.918,0.624,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.267,0.588,0.937,0.996,0.992,0.992,0.992,0.843,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.612,0.788,0.996,0.996,0.996,0.945,0.588,0.384,0.031,0.000,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.075,0.604,0.996,0.925,0.796,0.325,0.153,0.118,0.000,0.000,0.000,0.000,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.565,0.992,0.569,0.047,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.039,0.506,0.871,0.306,0.310,0.031,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.525,0.992,0.655,0.031,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,1.000,0.996,0.306,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.788,0.992,0.886,0.271,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.216,0.024,0.000,0.071,0.502,0.992,0.945,0.161,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.098,0.804,0.922,0.361,0.000,0.000,0.078,0.992,0.992,0.227,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.906,0.961,0.424,0.000,0.000,0.000,0.518,0.992,0.725,0.055,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.475,0.961,0.996,0.996,0.996,0.851,0.996,0.875,0.196,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.455,0.647,0.914,0.914,0.918,0.706,0.153,0.012,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000],
+  [0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000],
+];
+const HACTS   = [0.82, 0.34, 0.67, 0.15, 0.91];
+// Realistic sigmoid outputs before any training (random weights → all near 0.5)
+const RAND_OACTS = [0.46, 0.52, 0.41, 0.58, 0.39, 0.51, 0.44, 0.57, 0.38, 0.49];
+const OACTS   = [0.02,0.01,0.03,0.04,0.02,0.91,0.03,0.01,0.02,0.01];
+const OTARGET = [0,0,0,0,0,1,0,0,0,0];
+const LOSS_CURVE = [2.28,1.94,1.58,1.28,1.02,0.84,0.72,0.63,0.56,0.51,
+                    0.46,0.43,0.40,0.37,0.35,0.33,0.32,0.30,0.29,0.28,
+                    0.27,0.26,0.25,0.25,0.24,0.23,0.23,0.22,0.22,0.21];
+const ACC_CURVE  = [11,46,62,72,78,82,84,86,87,88,89,90,90,91,91,92,92,
+                    92,93,93,93,93,94,94,94,94,94,95,95,95];
+
+// ─── Network layout (left SVG 480×380) ────────────────────────────────────────
+const NW=480, NH=380;
+const INX=68, HNX=240, ONX=432;
+const INY = [22,60,98,136,198,236,274,312];
+const IN_GAP_Y = 170;
+const HNY = [45,115,190,265,335];
+const ONY = Array.from({length:10},(_,i)=>14+i*35);
+
+// ─── SVG helper ───────────────────────────────────────────────────────────────
+function el(tag, attrs={}, txt='') {
+  const e = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [k,v] of Object.entries(attrs)) e.setAttribute(k,v);
+  if (txt) e.textContent = txt;
+  return e;
+}
+
+// ─── Steps ────────────────────────────────────────────────────────────────────
+const steps = [
+  {
+    nh:'none', rp:'digit',
+    title: "The Task: Recognizing Handwritten Digits",
+    html: `<p>MNIST is a dataset of 70,000 handwritten digit images — 60,000 for training,
+    10,000 for testing. Each image is 28×28 pixels and labeled with the correct digit (0–9).</p>
+    <p>A network that guesses randomly gets 10% right. The simple three-layer network in this
+    walkthrough, trained with nothing more than gradient descent, reaches <b>~95% accuracy</b> —
+    correctly classifying 9,500 of the 10,000 test images it has never seen.</p>
+    <p>The question is: <em>how does it learn?</em></p>
+    <p style="margin-top:10px;font-size:0.88em;color:#806050">
+      Based on: Michael A. Nielsen,
+      <a href="http://neuralnetworksanddeeplearning.com" style="color:#b04030">
+        <em>Neural Networks and Deep Learning</em></a>
+      (Determination Press, 2015), Chapter 1.
+      Free online at neuralnetworksanddeeplearning.com.</p>`
+  },
+  {
+    nh:'input', rp:'digit_vals',
+    title: "Step 1 — Encode the Image as 784 Numbers",
+    html: `<p>Each 28×28 image is flattened into a vector of <b>784 pixel values</b>,
+    each scaled to [0, 1] (0 = black, 1 = white).</p>
+    <p>These 784 values become the <b style="color:${ICOL}">input layer</b> —
+    one neuron per pixel. The neuron's activation simply <em>is</em> the pixel value.
+    No computation happens in the input layer; it is just the raw data.</p>
+    <p>A few pixel values for this "5" are labeled above. The bright strokes are
+    near 1.0; the background is near 0.0.</p>`
+  },
+  {
+    nh:'all', rp:'architecture',
+    title: "Step 2 — Network Architecture: 784 → 30 → 10",
+    html: `<p>The network has three layers:</p>
+    <ul>
+      <li><b style="color:${ICOL}">Input layer:</b> 784 neurons — one per pixel</li>
+      <li><b style="color:${HCOL}">Hidden layer:</b> 30 neurons — learned feature detectors</li>
+      <li><b style="color:${OCOL}">Output layer:</b> 10 neurons — one per digit class (0–9)</li>
+    </ul>
+    <p>Every input neuron connects to every hidden neuron; every hidden neuron connects
+    to every output neuron. That is 784×30 + 30×10 = <b>23,820 weights</b> plus 40 biases —
+    all initialized randomly and all learned from data.</p>`
+  },
+  {
+    nh:'ws', rp:'weighted_sum',
+    title: "Step 3 — Inside One Neuron: Weighted Sum + Bias",
+    html: `<p>Each hidden neuron computes a <b>weighted sum</b> of all 784 input
+    activations, adds a bias term, and produces a single number <em>z</em>:</p>
+    <p style="font-family:monospace;margin-left:1em;font-size:0.95em">
+      z &nbsp;=&nbsp; w₁a₁ + w₂a₂ + … + w₇₈₄a₇₈₄ + b
+    </p>
+    <p>Weights encode how much each pixel should influence this neuron.
+    A large positive weight means "brightness here is evidence for this feature."
+    A large negative weight means "brightness here argues against it."
+    The bias shifts the neuron's activation threshold.</p>`
+  },
+  {
+    nh:'ws', rp:'sigmoid',
+    title: "Step 4 — The Sigmoid Activation Function",
+    html: `<p>The raw weighted sum <em>z</em> is passed through the <b>sigmoid function</b>
+    to produce the neuron's output activation <em>a</em>:</p>
+    <p style="font-family:monospace;margin-left:1em;font-size:0.95em">
+      σ(z) = 1 / (1 + e<sup>−z</sup>)
+    </p>
+    <p>Sigmoid squashes any real number into the range <b>(0, 1)</b>, making it natural
+    to interpret activations as probabilities.</p>
+    <p>Crucially, sigmoid is <em>smooth and differentiable everywhere</em>.
+    This is what makes gradient descent work: small changes in weights produce
+    small, predictable changes in output. The gold dot shows the example from Step 3.</p>`
+  },
+  {
+    nh:'forward_h', rp:'hidden_bars',
+    title: "Step 5 — Forward Pass: Hidden Layer Activations",
+    html: `<p>When the image of "5" enters the network, each of the 30 hidden neurons
+    computes its weighted sum and applies sigmoid. The result is a vector of 30 activations —
+    a learned, compressed <b>representation of the image</b>.</p>
+    <p>Five representative activations are shown on the right. Each neuron acts as a
+    <em>feature detector</em>: one may respond to horizontal strokes, another to
+    top-left corners, another to closed curves. The network discovers these features
+    automatically — they are never specified by hand.</p>`
+  },
+  {
+    nh:'forward_o', rp:'output_bars',
+    title: "Step 6 — Forward Pass: Reading the Output",
+    html: `<p>The 10 output neurons each receive the 30 hidden activations, compute
+    their own weighted sum + sigmoid, and produce a score for each digit class.</p>
+    <p>The network's <b>prediction</b> is the output neuron with the highest activation.
+    Here, neuron <b style="color:${OCOL}">5</b> fires at 0.91 — the network correctly
+    identifies the digit as "5."</p>
+    <p>In a perfectly trained network, the correct class fires at 1.0 and all others
+    fire at 0.0. We measure the gap between that ideal and reality using a cost function.</p>`
+  },
+  {
+    nh:'output', rp:'cost',
+    title: "Step 7 — The Cost Function: Measuring Error",
+    html: `<p>Before training, all weights are random. With small random weights, every
+    sigmoid output sits near 0.5 — the network has no idea which digit it's looking at.
+    For the image of "5", the correct output neuron should fire at <b>1.0</b>;
+    all others should be <b>0.0</b>. Instead, everything is near 0.5.</p>
+    <p>The <b>quadratic cost</b> (MSE) measures the total squared gap between
+    what the network output and what it should have output, across all output neurons:</p>
+    <p style="font-family:monospace;margin-left:1em;font-size:0.95em">
+      C = (1/2n) &nbsp;Σ &nbsp;‖ y(x) − a(x) ‖²
+    </p>
+    <p>The right panel shows the initial outputs, the gap for digit 5, and the
+    full calculation. Training means finding weights that drive C toward zero.</p>`
+  },
+  {
+    nh:'none', rp:'loss_curve',
+    title: "Step 8 — Gradient Descent and Backpropagation",
+    html: `<p>We minimize C by <b>gradient descent</b>: compute the gradient of C
+    with respect to every weight and bias, then nudge each parameter a small amount
+    in the direction that decreases C.</p>
+    <p><b>Stochastic gradient descent (SGD)</b> estimates the gradient from a random
+    <em>mini-batch</em> of ~10 images rather than all 60,000 — much faster and often
+    finds better solutions than full-batch descent.</p>
+    <p><b>Backpropagation</b> is the algorithm that efficiently computes all those
+    gradients by flowing the error signal backwards through the network, layer by layer.
+    The loss curve above shows C dropping over 30 training epochs.</p>`
+  },
+  {
+    nh:'all', rp:'accuracy',
+    title: "Results: ~95% Accuracy After 30 Epochs",
+    html: `<p>After 30 passes through all 60,000 training images, the 784 → 30 → 10
+    network reaches <b>~95% test accuracy</b> — correctly classifying 9,500 of the
+    10,000 images it has never seen before.</p>
+    <p>This is remarkable for a network with no convolutional layers, no regularization,
+    and no architecture tuning beyond choosing 30 hidden neurons. It uses only the ideas
+    from this walkthrough: weighted sums, sigmoid activations, quadratic cost, and SGD
+    with backpropagation.</p>
+    <p style="color:#806050;font-style:italic;font-size:0.9em">
+      Source: Nielsen, <em>Neural Networks and Deep Learning</em>, Chapter 1.</p>`
+  },
+  {
+    nh:'none', rp:'sigmoid_vs_relu',
+    title: "What the Field Changed After Chapter 1",
+    html: `<p><b>Activation: ReLU instead of sigmoid.</b>
+    ReLU (Rectified Linear Unit) — max(0, z) — is the modern default.
+    It trains faster and avoids the <em>vanishing gradient</em> problem: sigmoid
+    squashes all inputs into (0, 1), so gradients shrink as they travel through
+    many layers, slowing learning. ReLU's gradient is either 0 or 1 — it doesn't shrink.</p>
+    <p><b>Architecture: deeper and convolutional.</b>
+    Adding more hidden layers lets the network learn hierarchical features
+    (edges → shapes → digit parts). <em>Convolutional</em> layers exploit the
+    spatial structure of images — nearby pixels are related — and push MNIST
+    accuracy above 99%.</p>
+    <p><b>Optimizer: Adam instead of vanilla SGD.</b>
+    Adam adapts the learning rate per parameter and converges in far fewer epochs.</p>
+    <p><b>Regularization: dropout and batch normalization</b> prevent overfitting
+    and stabilize training in deep networks.</p>
+    <p style="color:#806050;font-style:italic;font-size:0.9em;margin-top:6px">
+      Nielsen covers all of this in Chapters 2–6 of the same book.</p>`
+  },
+];
+
+// ─── Node opacity helper ───────────────────────────────────────────────────────
+function getOp(layer, nh) {
+  if (nh==='none') return 0.35;
+  if (nh==='all')  return 1.0;
+  const active = {
+    input:     ['input'],
+    hidden:    ['hidden'],
+    output:    ['output'],
+    ws:        ['input','hidden'],
+    forward_h: ['input','hidden'],
+    forward_o: ['input','hidden','output'],
+  }[nh] || [];
+  return active.includes(layer) ? 1.0 : 0.2;
+}
+
+// ─── Left SVG: network diagram ────────────────────────────────────────────────
+function renderNet(si) {
+  const s   = steps[si];
+  const svg = document.getElementById('netsvg');
+  svg.innerHTML = '';
+  const nh  = s.nh;
+  const iOp = getOp('input',  nh);
+  const hOp = getOp('hidden', nh);
+  const oOp = getOp('output', nh);
+
+  // ── Connections input → hidden ──
+  INY.forEach(iy => {
+    HNY.forEach((hy, hi) => {
+      const wsHi = (nh==='ws' && hi===0);
+      svg.appendChild(el('line',{
+        x1:INX+7, y1:iy, x2:HNX-8, y2:hy,
+        stroke: wsHi ? GOLD : ICOL,
+        'stroke-width': wsHi ? 1.2 : 0.6,
+        opacity: wsHi ? 0.65 :
+                 (nh==='forward_h'||nh==='forward_o'||nh==='all') ? 0.18 : 0.07
+      }));
+    });
+  });
+
+  // ── Connections hidden → output ──
+  HNY.forEach(hy => {
+    ONY.forEach(oy => {
+      svg.appendChild(el('line',{
+        x1:HNX+8, y1:hy, x2:ONX-8, y2:oy,
+        stroke: HCOL, 'stroke-width':0.6,
+        opacity: (nh==='forward_o'||nh==='output'||nh==='all') ? 0.22 : 0.05
+      }));
+    });
+  });
+
+  // ── Input nodes ──
+  INY.forEach((iy) => {
+    svg.appendChild(el('circle',{cx:INX,cy:iy,r:7,fill:ICOL,opacity:iOp*0.9}));
+  });
+  svg.appendChild(el('text',{x:INX,y:IN_GAP_Y+4,'text-anchor':'middle',
+    fill:'#7a5040','font-size':13},'⋮'));
+
+  // ── Hidden nodes ──
+  HNY.forEach((hy, hi) => {
+    const isWS   = (nh==='ws' && hi===0);
+    const showAct = (nh==='forward_h'||nh==='forward_o');
+    svg.appendChild(el('circle',{
+      cx:HNX, cy:hy, r:isWS?10:7,
+      fill:isWS ? GOLD : HCOL,
+      opacity:hOp*(isWS?1:0.9)
+    }));
+    if (showAct) {
+      svg.appendChild(el('text',{x:HNX+13,y:hy+4,
+        fill:HCOL,'font-size':9,opacity:0.9},HACTS[hi].toFixed(2)));
+    }
+    if (isWS) {
+      svg.appendChild(el('text',{x:HNX+16,y:hy+4,
+        fill:GOLD,'font-size':10,'font-weight':'bold'},'σ(z)'));
+    }
+  });
+
+  // ── Output nodes ──
+  ONY.forEach((oy, oi) => {
+    const isWin  = (nh==='forward_o'||nh==='output') && oi===5;
+    svg.appendChild(el('circle',{
+      cx:ONX, cy:oy, r:7,
+      fill:isWin ? GOLD : OCOL,
+      opacity:oOp*0.9
+    }));
+    svg.appendChild(el('text',{
+      x:ONX+14, y:oy+4,
+      fill:isWin ? GOLD : '#7a9070', 'font-size':9
+    },String(oi)));
+  });
+
+  // ── Layer size labels ──
+  svg.appendChild(el('text',{x:INX, y:NH-8,'text-anchor':'middle',
+    fill:'#806050','font-size':9,'font-style':'italic'},'784'));
+  svg.appendChild(el('text',{x:HNX, y:NH-8,'text-anchor':'middle',
+    fill:'#806050','font-size':9,'font-style':'italic'},'30'));
+  svg.appendChild(el('text',{x:ONX, y:NH-8,'text-anchor':'middle',
+    fill:'#806050','font-size':9,'font-style':'italic'},'10'));
+
+  // ── Diagram title ──
+  svg.appendChild(el('text',{x:NW/2,y:14,'text-anchor':'middle',
+    fill:'#a06848','font-size':10,'font-style':'italic'},'Network: 784 → 30 → 10'));
+}
+
+// ─── Right SVG ────────────────────────────────────────────────────────────────
+const RW=340, RH=380;
+
+function renderRight(si) {
+  const s   = steps[si];
+  const svg = document.getElementById('rightsvg');
+  svg.innerHTML = '';
+  switch(s.rp) {
+    case 'digit':       drawDigit(svg, false); break;
+    case 'digit_vals':  drawDigit(svg, true);  break;
+    case 'architecture':drawArchitecture(svg); break;
+    case 'weighted_sum':drawWeightedSum(svg);  break;
+    case 'sigmoid':     drawSigmoid(svg);      break;
+    case 'hidden_bars': drawHiddenBars(svg);   break;
+    case 'output_bars': drawOutputBars(svg);   break;
+    case 'cost':        drawCost(svg);         break;
+    case 'loss_curve':  drawCurve(svg, LOSS_CURVE,'Training Loss (30 epochs)',HCOL,0,2.5,false); break;
+    case 'accuracy':       drawCurve(svg, ACC_CURVE, 'Test Accuracy (30 epochs)',OCOL,0,100,true); break;
+    case 'sigmoid_vs_relu':drawSigmoidVsReLU(svg); break;
+  }
+}
+
+// ── Digit ──
+function drawDigit(svg, showVals) {
+  const CS=10, OX=(RW-28*CS)/2, OY=24; // 10px cells, 280×280 grid, centered
+
+  svg.appendChild(el('text',{x:RW/2,y:14,'text-anchor':'middle',
+    fill:'#a06848','font-size':11,'font-style':'italic'},
+    showVals ? '28×28 pixel values — each cell is one input neuron'
+             : 'Handwritten digit "5" (MNIST dataset)'));
+
+  // Draw all 784 cells
+  DIGIT5.forEach((row,ri) => {
+    row.forEach((val,ci) => {
+      const b=Math.round(val*230);
+      svg.appendChild(el('rect',{
+        x:OX+ci*CS, y:OY+ri*CS,
+        width:CS-0.5, height:CS-0.5,
+        fill:`rgb(${b},${b},${Math.min(b+12,255)})`
+      }));
+    });
+  });
+
+  if (showVals) {
+    // Gold border around one interesting row in the main grid (row 8, cols 18-25)
+    const HR=8, C0=18, C1=25;
+    svg.appendChild(el('rect',{
+      x:OX+C0*CS, y:OY+HR*CS,
+      width:(C1-C0+1)*CS, height:CS,
+      fill:'none', stroke:GOLD, 'stroke-width':1.5, opacity:0.9
+    }));
+
+    // Zoom strip below the grid
+    const ZCS=28, ZW=8*ZCS, ZX=(RW-ZW)/2, ZY=OY+28*CS+18;
+    svg.appendChild(el('text',{x:RW/2,y:ZY-6,'text-anchor':'middle',
+      fill:GOLD,'font-size':9},'↑ row 9 zoomed (cols 19–26)'));
+
+    DIGIT5[HR].slice(C0,C1+1).forEach((val,i) => {
+      const x=ZX+i*ZCS;
+      const b=Math.round(val*230);
+      svg.appendChild(el('rect',{x,y:ZY,width:ZCS-1,height:ZCS-1,
+        fill:`rgb(${b},${b},${Math.min(b+12,255)})`,
+        stroke:GOLD,'stroke-width':0.5,opacity:0.4}));
+      const tf = val>0.5 ? '#1a0a06' : '#e8d0a0';
+      svg.appendChild(el('text',{
+        x:x+ZCS/2, y:ZY+ZCS-5,
+        'text-anchor':'middle',
+        fill:tf,'font-size':9,'font-weight':'bold'
+      },val.toFixed(2)));
+    });
+
+    svg.appendChild(el('text',{x:RW/2,y:ZY+ZCS+12,'text-anchor':'middle',
+      fill:'#806050','font-size':9},'28×28 = 784 values → 784 input neurons'));
+  } else {
+    svg.appendChild(el('text',{x:RW/2,y:OY+28*CS+16,'text-anchor':'middle',
+      fill:'#806050','font-size':10},'MNIST: 70,000 labeled images, 28×28 pixels each'));
+  }
+}
+
+// ── Architecture ──
+function drawArchitecture(svg) {
+  svg.appendChild(el('text',{x:RW/2,y:28,'text-anchor':'middle',
+    fill:'#a06848','font-size':11,'font-style':'italic'},'Network Layers'));
+
+  const rows = [
+    {col:ICOL, label:'Input',  n:'784', role:'Pixel value per input'},
+    {col:HCOL, label:'Hidden', n:' 30', role:'Learned feature detector'},
+    {col:OCOL, label:'Output', n:' 10', role:'Digit score per class (0–9)'},
+  ];
+  const colX=[22,110,162], startY=58;
+
+  ['Layer','Neurons','Role'].forEach((h,i) =>
+    svg.appendChild(el('text',{x:colX[i],y:startY,
+      fill:'#a06848','font-size':10,'font-weight':'bold'},h)));
+  svg.appendChild(el('line',{x1:14,y1:startY+7,x2:RW-14,y2:startY+7,
+    stroke:'#5a3020','stroke-width':1}));
+
+  rows.forEach((r,ri) => {
+    const y = startY+30+ri*38;
+    svg.appendChild(el('circle',{cx:colX[0]+5,cy:y-4,r:7,fill:r.col,opacity:0.9}));
+    svg.appendChild(el('text',{x:colX[0]+18,y,fill:'#d0b090','font-size':10.5},r.label));
+    svg.appendChild(el('text',{x:colX[1],y,fill:r.col,'font-size':11,'font-weight':'bold'},r.n));
+    svg.appendChild(el('text',{x:colX[2],y,fill:'#907060','font-size':9.5},r.role));
+  });
+
+  const y2 = startY+30+3*38+18;
+  svg.appendChild(el('line',{x1:14,y1:y2-6,x2:RW-14,y2:y2-6,stroke:'#5a3020','stroke-width':1}));
+  svg.appendChild(el('text',{x:RW/2,y:y2+12,'text-anchor':'middle',
+    fill:'#907060','font-size':10},'784×30 + 30×10 = 23,820 weights'));
+  svg.appendChild(el('text',{x:RW/2,y:y2+28,'text-anchor':'middle',
+    fill:'#907060','font-size':10},'+ 30 + 10 = 40 biases'));
+  svg.appendChild(el('text',{x:RW/2,y:y2+52,'text-anchor':'middle',
+    fill:GOLD,'font-size':11,'font-weight':'bold'},'23,860 parameters — all learned from data'));
+}
+
+// ── Weighted sum ──
+function drawWeightedSum(svg) {
+  svg.appendChild(el('text',{x:RW/2,y:22,'text-anchor':'middle',
+    fill:'#a06848','font-size':11,'font-style':'italic'},'Inside one hidden neuron'));
+
+  const inputs  = [{a:'a₁',v:0.9},{a:'a₂',v:0.9},{a:'a₃',v:0.1},{a:'a₄',v:0.0}];
+  const weights = [0.7,-0.4,0.5,-0.2];
+  const bias    = 0.1;
+  const IX=58, NY=185;
+  const IYS=[76,126,176,226];
+
+  inputs.forEach(({a,v},i) => {
+    const iy=IYS[i];
+    svg.appendChild(el('circle',{cx:IX,cy:iy,r:19,fill:ICOL,opacity:0.85}));
+    svg.appendChild(el('text',{x:IX,y:iy-5,'text-anchor':'middle',fill:'white','font-size':9},a));
+    svg.appendChild(el('text',{x:IX,y:iy+8,'text-anchor':'middle',fill:'white','font-size':10,'font-weight':'bold'},v.toFixed(1)));
+    const wx=(IX+19+152)/2, wy=(iy+NY)/2-4;
+    svg.appendChild(el('line',{x1:IX+19,y1:iy,x2:152,y2:NY,
+      stroke:ICOL,'stroke-width':1.2,opacity:0.55}));
+    const wlbl=(weights[i]>=0?'+':'')+weights[i];
+    svg.appendChild(el('text',{x:wx,y:wy,'text-anchor':'middle',
+      fill:GOLD,'font-size':9.5},wlbl));
+  });
+
+  svg.appendChild(el('text',{x:IX,y:268,'text-anchor':'middle',fill:'#7a5040','font-size':14},'⋮'));
+  svg.appendChild(el('text',{x:IX,y:294,'text-anchor':'middle',fill:TICK,'font-size':9},'784 inputs'));
+
+  // Summation node
+  svg.appendChild(el('circle',{cx:163,cy:NY,r:26,fill:'#3a1808',stroke:GOLD,'stroke-width':2}));
+  svg.appendChild(el('text',{x:163,y:NY-5,'text-anchor':'middle',fill:GOLD,'font-size':14},'Σ'));
+  svg.appendChild(el('text',{x:163,y:NY+10,'text-anchor':'middle',fill:'#c09060','font-size':9},'+ b'));
+
+  const z = inputs.reduce((s,inp,i)=>s+inp.v*weights[i],0)+bias;
+  svg.appendChild(el('text',{x:163,y:NY+44,'text-anchor':'middle',fill:GOLD,'font-size':10},
+    `z ≈ ${z.toFixed(2)}`));
+
+  // Arrow
+  svg.appendChild(el('line',{x1:189,y1:NY,x2:238,y2:NY,stroke:GOLD,'stroke-width':1.5,opacity:0.8}));
+  svg.appendChild(el('polygon',{points:`234,${NY-4} 244,${NY} 234,${NY+4}`,fill:GOLD,opacity:0.8}));
+
+  // Sigma node
+  svg.appendChild(el('circle',{cx:260,cy:NY,r:26,fill:'#3a1808',stroke:HCOL,'stroke-width':2}));
+  svg.appendChild(el('text',{x:260,y:NY-5,'text-anchor':'middle',fill:HCOL,'font-size':14},'σ'));
+
+  const a0=1/(1+Math.exp(-z));
+  svg.appendChild(el('text',{x:260,y:NY+44,'text-anchor':'middle',fill:HCOL,'font-size':10},
+    `a ≈ ${a0.toFixed(2)}`));
+
+  svg.appendChild(el('line',{x1:286,y1:NY,x2:318,y2:NY,stroke:HCOL,'stroke-width':1.5,opacity:0.8}));
+  svg.appendChild(el('polygon',{points:`314,${NY-4} 324,${NY} 314,${NY+4}`,fill:HCOL,opacity:0.8}));
+}
+
+// ── Sigmoid ──
+function drawSigmoid(svg) {
+  svg.appendChild(el('text',{x:RW/2,y:22,'text-anchor':'middle',
+    fill:'#a06848','font-size':11,'font-style':'italic'},'σ(z) = 1 / (1 + e⁻ᶻ)'));
+
+  const ML=46,MR=20,MT=36,MB=38;
+  const W=RW-ML-MR, H=RH-MT-MB;
+  const ZMN=-5,ZMX=5;
+
+  const px=z=>ML+(z-ZMN)/(ZMX-ZMN)*W;
+  const py=v=>MT+H-v*H;
+
+  [-4,-2,0,2,4].forEach(z=>{
+    svg.appendChild(el('line',{x1:px(z),y1:MT,x2:px(z),y2:MT+H,
+      stroke:'#3a1808','stroke-width':0.5,'stroke-dasharray':'2,4'}));
+    svg.appendChild(el('text',{x:px(z),y:MT+H+16,'text-anchor':'middle',fill:TICK,'font-size':10},String(z)));
+  });
+  [0,0.25,0.5,0.75,1].forEach(v=>{
+    svg.appendChild(el('line',{x1:ML,y1:py(v),x2:ML+W,y2:py(v),
+      stroke:'#3a1808','stroke-width':0.5,'stroke-dasharray':'2,4'}));
+    svg.appendChild(el('text',{x:ML-8,y:py(v)+4,'text-anchor':'end',fill:TICK,'font-size':10},v.toFixed(2)));
+  });
+
+  svg.appendChild(el('line',{x1:ML,y1:MT+H,x2:ML+W,y2:MT+H,stroke:AXIS,'stroke-width':1}));
+  svg.appendChild(el('line',{x1:ML,y1:MT,x2:ML,y2:MT+H,stroke:AXIS,'stroke-width':1}));
+  svg.appendChild(el('text',{x:ML+W/2,y:RH-4,'text-anchor':'middle',fill:TICK,'font-size':11},'z'));
+  svg.appendChild(el('text',{x:10,y:MT+H/2+4,'text-anchor':'middle',fill:TICK,'font-size':11,
+    transform:`rotate(-90 10 ${MT+H/2})`},'σ(z)'));
+
+  const pts=[];
+  for(let z=ZMN;z<=ZMX;z+=0.1)
+    pts.push(`${px(z).toFixed(1)},${py(1/(1+Math.exp(-z))).toFixed(1)}`);
+  svg.appendChild(el('polyline',{points:pts.join(' '),fill:'none',stroke:HCOL,'stroke-width':2.5}));
+
+  // Example point from Step 3
+  const z0=0.9*0.7+0.9*(-0.4)+0.1*0.5+0.0*(-0.2)+0.1;
+  const s0=1/(1+Math.exp(-z0));
+  svg.appendChild(el('circle',{cx:px(z0),cy:py(s0),r:6,fill:GOLD,stroke:'#1a0a08','stroke-width':1.5}));
+  svg.appendChild(el('line',{x1:px(z0),y1:py(s0),x2:px(z0),y2:MT+H,
+    stroke:GOLD,'stroke-width':1,'stroke-dasharray':'3,3',opacity:0.6}));
+  svg.appendChild(el('line',{x1:ML,y1:py(s0),x2:px(z0),y2:py(s0),
+    stroke:GOLD,'stroke-width':1,'stroke-dasharray':'3,3',opacity:0.6}));
+  svg.appendChild(el('text',{x:px(z0)+8,y:py(s0)-10,fill:GOLD,'font-size':9.5},
+    `z=${z0.toFixed(2)} → σ=${s0.toFixed(2)}`));
+
+  svg.appendChild(el('text',{x:ML+W-4,y:py(0.97)-8,'text-anchor':'end',
+    fill:'#706050','font-size':9,'font-style':'italic'},'→ 1 as z → +∞'));
+  svg.appendChild(el('text',{x:ML+W-4,y:py(0.03)+16,'text-anchor':'end',
+    fill:'#706050','font-size':9,'font-style':'italic'},'→ 0 as z → −∞'));
+}
+
+// ── Sigmoid vs ReLU comparison ──
+function drawSigmoidVsReLU(svg) {
+  svg.appendChild(el('text',{x:RW/2,y:20,'text-anchor':'middle',
+    fill:'#a06848','font-size':11,'font-style':'italic'},'Sigmoid vs. ReLU'));
+
+  const ML=46,MR=20,MT=38,MB=44;
+  const W=RW-ML-MR, H=RH-MT-MB;
+  const ZMN=-4,ZMX=4,YMN=0,YMX=4;
+
+  const px=z=>ML+(z-ZMN)/(ZMX-ZMN)*W;
+  const py=v=>MT+H-(v-YMN)/(YMX-YMN)*H;
+
+  // Grid
+  [-3,-2,-1,0,1,2,3].forEach(z=>{
+    svg.appendChild(el('line',{x1:px(z),y1:MT,x2:px(z),y2:MT+H,
+      stroke:'#3a1808','stroke-width':0.5,'stroke-dasharray':'2,4'}));
+    svg.appendChild(el('text',{x:px(z),y:MT+H+16,'text-anchor':'middle',fill:TICK,'font-size':10},String(z)));
+  });
+  [0,1,2,3].forEach(v=>{
+    svg.appendChild(el('line',{x1:ML,y1:py(v),x2:ML+W,y2:py(v),
+      stroke:'#3a1808','stroke-width':0.5,'stroke-dasharray':'2,4'}));
+    svg.appendChild(el('text',{x:ML-8,y:py(v)+4,'text-anchor':'end',fill:TICK,'font-size':10},String(v)));
+  });
+
+  // Axes
+  svg.appendChild(el('line',{x1:ML,y1:MT+H,x2:ML+W,y2:MT+H,stroke:AXIS,'stroke-width':1}));
+  svg.appendChild(el('line',{x1:ML,y1:MT,   x2:ML,   y2:MT+H,stroke:AXIS,'stroke-width':1}));
+  svg.appendChild(el('text',{x:ML+W/2,y:MT+H+30,'text-anchor':'middle',fill:TICK,'font-size':11},'z (weighted sum)'));
+
+  // Sigmoid curve
+  const sigPts=[];
+  for(let z=ZMN;z<=ZMX;z+=0.08)
+    sigPts.push(`${px(z).toFixed(1)},${py(1/(1+Math.exp(-z))).toFixed(1)}`);
+  svg.appendChild(el('polyline',{points:sigPts.join(' '),fill:'none',stroke:HCOL,'stroke-width':2.5}));
+
+  // ReLU curve
+  const reluPts=[`${px(ZMN)},${py(0)}`, `${px(0)},${py(0)}`, `${px(YMX)},${py(YMX)}`];
+  svg.appendChild(el('polyline',{points:reluPts.join(' '),fill:'none',stroke:OCOL,'stroke-width':2.5}));
+
+  // Legend
+  const ly=MT+12;
+  svg.appendChild(el('line',{x1:ML+4,y1:ly,x2:ML+24,y2:ly,stroke:HCOL,'stroke-width':2.5}));
+  svg.appendChild(el('text',{x:ML+28,y:ly+4,fill:HCOL,'font-size':10},'σ(z) — sigmoid (Chapter 1)'}));
+  svg.appendChild(el('line',{x1:ML+4,y1:ly+18,x2:ML+24,y2:ly+18,stroke:OCOL,'stroke-width':2.5}));
+  svg.appendChild(el('text',{x:ML+28,y:ly+22,fill:OCOL,'font-size':10},'max(0, z) — ReLU (modern)'}));
+
+  // Annotations
+  svg.appendChild(el('text',{x:px(3.2),y:py(0.95)-10,'text-anchor':'middle',
+    fill:HCOL,'font-size':8.5,'font-style':'italic'},'saturates → 1'));
+  svg.appendChild(el('text',{x:px(3.2),y:py(3.2)-10,'text-anchor':'middle',
+    fill:OCOL,'font-size':8.5,'font-style':'italic'},'stays linear'));
+}
+
+// ── Hidden activations bar chart ──
+function drawHiddenBars(svg) {
+  svg.appendChild(el('text',{x:RW/2,y:18,'text-anchor':'middle',
+    fill:'#a06848','font-size':10,'font-style':'italic'},'Hidden layer activations (5 of 30 shown)'));
+
+  const ML=62,MR=20,MT=34,MB=30,n=5;
+  const W=RW-ML-MR, H=RH-MT-MB;
+  const barH=Math.floor((H-(n-1)*10)/n);
+  const labels=['h₀','h₁','h₂','h₃','h₄'];
+
+  HACTS.forEach((a,i)=>{
+    const y=MT+i*(barH+10);
+    svg.appendChild(el('rect',{x:ML,y,width:Math.max(a*W,2),height:barH,fill:HCOL,opacity:0.85}));
+    svg.appendChild(el('text',{x:ML-6,y:y+barH-2,'text-anchor':'end',fill:'#c0a080','font-size':11},labels[i]));
+    svg.appendChild(el('text',{x:ML+a*W+6,y:y+barH-2,fill:HCOL,'font-size':10},a.toFixed(2)));
+  });
+
+  svg.appendChild(el('line',{x1:ML,y1:MT+H,x2:ML+W,y2:MT+H,stroke:AXIS,'stroke-width':1}));
+  [0,0.5,1.0].forEach(v=>{
+    const x=ML+v*W;
+    svg.appendChild(el('line',{x1:x,y1:MT+H,x2:x,y2:MT+H+4,stroke:AXIS,'stroke-width':1}));
+    svg.appendChild(el('text',{x,y:MT+H+16,'text-anchor':'middle',fill:TICK,'font-size':10},v.toFixed(1)));
+  });
+}
+
+// ── Output bars ──
+function drawOutputBars(svg) {
+  svg.appendChild(el('text',{x:RW/2,y:18,'text-anchor':'middle',
+    fill:'#a06848','font-size':10,'font-style':'italic'},'Output layer activations'));
+
+  const ML=50,MR=20,MT=32,MB=36,n=10;
+  const W=RW-ML-MR, H=RH-MT-MB;
+  const barH=Math.floor((H-(n-1)*4)/n);
+
+  OACTS.forEach((a,i)=>{
+    const y=MT+i*(barH+4);
+    const isWin=i===5;
+    svg.appendChild(el('rect',{x:ML,y,width:Math.max(a*W,2),height:barH,
+      fill:isWin?GOLD:OCOL, opacity:isWin?1.0:0.6}));
+    svg.appendChild(el('text',{x:ML-6,y:y+barH-1,'text-anchor':'end',
+      fill:isWin?GOLD:'#808060','font-size':9.5},`digit ${i}`));
+    svg.appendChild(el('text',{x:ML+a*W+5,y:y+barH-1,
+      fill:isWin?GOLD:OCOL,'font-size':isWin?11:9,'font-weight':isWin?'bold':'normal'},
+      a.toFixed(2)));
+  });
+
+  svg.appendChild(el('line',{x1:ML,y1:MT+H,x2:ML+W,y2:MT+H,stroke:AXIS,'stroke-width':1}));
+  [0,0.5,1.0].forEach(v=>{
+    const x=ML+v*W;
+    svg.appendChild(el('line',{x1:x,y1:MT+H,x2:x,y2:MT+H+4,stroke:AXIS,'stroke-width':1}));
+    svg.appendChild(el('text',{x,y:MT+H+16,'text-anchor':'middle',fill:TICK,'font-size':10},v.toFixed(1)));
+  });
+
+  svg.appendChild(el('text',{x:RW/2,y:RH-4,'text-anchor':'middle',fill:GOLD,'font-size':11},
+    'Prediction: digit 5  ✓'));
+}
+
+// ── Cost ──
+function drawCost(svg) {
+  svg.appendChild(el('text',{x:RW/2,y:15,'text-anchor':'middle',
+    fill:'#a06848','font-size':10,'font-style':'italic'},
+    'Before training — random weights, confused outputs'));
+
+  const ML=50, MR=16, MT=24, n=10;
+  const W=RW-ML-MR; // 274px
+  const barH=14, gap=4;
+  const chartH=n*(barH+gap)-gap; // 176px
+
+  // Dashed line at target = 1.0 (where digit 5 should be)
+  svg.appendChild(el('line',{x1:ML+W,y1:MT,x2:ML+W,y2:MT+chartH,
+    stroke:GOLD,'stroke-width':1,'stroke-dasharray':'3,3',opacity:0.55}));
+  svg.appendChild(el('text',{x:ML+W,y:MT-4,'text-anchor':'middle',
+    fill:GOLD,'font-size':8},'target (1.0)'));
+
+  RAND_OACTS.forEach((a,i)=>{
+    const y=MT+i*(barH+gap);
+    const is5=i===5;
+    svg.appendChild(el('rect',{x:ML,y,width:Math.max(a*W,2),height:barH,
+      fill:is5?GOLD:HCOL, opacity:is5?0.85:0.55}));
+    svg.appendChild(el('text',{x:ML-5,y:y+barH-1,'text-anchor':'end',
+      fill:is5?GOLD:'#907060','font-size':9.5},`digit ${i}`));
+    svg.appendChild(el('text',{x:ML+a*W+4,y:y+barH-1,
+      fill:is5?GOLD:HCOL,'font-size':9},a.toFixed(2)));
+
+    // Gap indicator for digit 5
+    if (is5) {
+      const bx=ML+a*W+1, tx=ML+W-1;
+      svg.appendChild(el('line',{x1:bx,y1:y+barH/2,x2:tx,y2:y+barH/2,
+        stroke:'#e06060','stroke-width':1.5,opacity:0.9}));
+      svg.appendChild(el('text',{x:(bx+tx)/2,y:y-2,'text-anchor':'middle',
+        fill:'#e08080','font-size':8},'gap = 0.49'));
+    }
+  });
+
+  // X-axis
+  svg.appendChild(el('line',{x1:ML,y1:MT+chartH,x2:ML+W,y2:MT+chartH,stroke:AXIS,'stroke-width':1}));
+  [0,0.5,1.0].forEach(v=>{
+    const x=ML+v*W;
+    svg.appendChild(el('line',{x1:x,y1:MT+chartH,x2:x,y2:MT+chartH+4,stroke:AXIS,'stroke-width':1}));
+    svg.appendChild(el('text',{x,y:MT+chartH+14,'text-anchor':'middle',fill:TICK,'font-size':9},v.toFixed(1)));
+  });
+
+  // MSE calculation section
+  const FY=MT+chartH+36;
+  svg.appendChild(el('line',{x1:14,y1:FY-8,x2:RW-14,y2:FY-8,stroke:'#5a3020','stroke-width':0.5}));
+  svg.appendChild(el('text',{x:20,y:FY+6,fill:'#a06848','font-size':10},'C = ½ Σ (a − y)²'));
+
+  // Two sample terms
+  [{d:0,a:RAND_OACTS[0],tgt:0},{d:5,a:RAND_OACTS[5],tgt:1}].forEach(({d,a,tgt},i)=>{
+    const sq=(a-tgt)**2;
+    svg.appendChild(el('text',{x:20,y:FY+26+i*20,
+      fill:d===5?GOLD:HCOL,'font-size':9},
+      `digit ${d}: (${a.toFixed(2)} − ${tgt.toFixed(2)})² = ${sq.toFixed(3)}`));
+  });
+  svg.appendChild(el('text',{x:20,y:FY+66,fill:'#706050','font-size':9},'  ⋯ + 8 more terms'));
+
+  svg.appendChild(el('line',{x1:14,y1:FY+74,x2:RW-14,y2:FY+74,stroke:'#5a3020','stroke-width':0.5}));
+
+  const randC=RAND_OACTS.reduce((s,a,i)=>s+0.5*(a-OTARGET[i])**2,0);
+  svg.appendChild(el('text',{x:20,y:FY+89,fill:'#e0c090','font-size':10.5},
+    `C ≈ ${randC.toFixed(2)}   ← network is confused`));
+
+  const trainedC=OACTS.reduce((s,a,i)=>s+0.5*(a-OTARGET[i])**2,0);
+  svg.appendChild(el('text',{x:20,y:FY+109,fill:OCOL,'font-size':10},
+    `After 30 epochs: C ≈ ${trainedC.toFixed(4)}  ← learned`));
+}
+
+// ── Generic curve (loss or accuracy) ──
+function drawCurve(svg, data, title, col, yMin, yMax, isAcc) {
+  svg.appendChild(el('text',{x:RW/2,y:22,'text-anchor':'middle',
+    fill:'#a06848','font-size':11,'font-style':'italic'},title));
+
+  const ML=50,MR=16,MT=36,MB=44;
+  const W=RW-ML-MR, H=RH-MT-MB;
+  const n=data.length;
+  const px=i=>ML+i/(n-1)*W;
+  const py=v=>MT+H-(v-yMin)/(yMax-yMin)*H;
+
+  const yTicks = isAcc?[0,25,50,75,100]:[0,0.5,1.0,1.5,2.0,2.5];
+  yTicks.forEach(v=>{
+    svg.appendChild(el('line',{x1:ML,y1:py(v),x2:ML+W,y2:py(v),
+      stroke:'#3a1808','stroke-width':0.5,'stroke-dasharray':'2,4'}));
+    svg.appendChild(el('text',{x:ML-6,y:py(v)+4,'text-anchor':'end',fill:TICK,'font-size':10},
+      isAcc?v+'%':v.toFixed(1)));
+  });
+
+  svg.appendChild(el('line',{x1:ML,y1:MT+H,x2:ML+W,y2:MT+H,stroke:AXIS,'stroke-width':1}));
+  svg.appendChild(el('line',{x1:ML,y1:MT,   x2:ML,   y2:MT+H,stroke:AXIS,'stroke-width':1}));
+  svg.appendChild(el('text',{x:ML+W/2,y:MT+H+30,'text-anchor':'middle',fill:TICK,'font-size':11},'Epoch'));
+  [0,9,19,29].forEach(i=>{
+    svg.appendChild(el('text',{x:px(i),y:MT+H+16,'text-anchor':'middle',fill:TICK,'font-size':10},String(i+1)));
+  });
+
+  const pts=data.map((v,i)=>`${px(i).toFixed(1)},${py(v).toFixed(1)}`).join(' ');
+  svg.appendChild(el('polyline',{points:pts,fill:'none',stroke:col,'stroke-width':2.5}));
+
+  const fv=data[n-1];
+  svg.appendChild(el('circle',{cx:px(n-1),cy:py(fv),r:5,fill:GOLD,stroke:'#1a0a08','stroke-width':1.5}));
+  svg.appendChild(el('text',{x:px(n-1)-8,y:py(fv)-10,'text-anchor':'end',
+    fill:GOLD,'font-size':11,'font-weight':'bold'},
+    isAcc?fv+'%':fv.toFixed(2)));
+}
+
+// ─── Navigation ───────────────────────────────────────────────────────────────
+let cur=0;
+function updateNav() {
+  const dotsEl=document.getElementById('dots');
+  dotsEl.innerHTML='';
+  steps.forEach((_,i)=>{
+    const d=document.createElement('span');
+    d.className='dot'+(i===cur?' active':'');
+    d.addEventListener('click',()=>{cur=i;render();});
+    dotsEl.appendChild(d);
+  });
+  document.getElementById('prev').disabled=cur===0;
+  document.getElementById('next').disabled=cur===steps.length-1;
+  document.getElementById('step-counter').textContent=`${cur+1} / ${steps.length}`;
+}
+function render() {
+  const s=steps[cur];
+  document.getElementById('step-title').textContent=s.title;
+  document.getElementById('explanation').innerHTML=s.html;
+  renderNet(cur);
+  renderRight(cur);
+  updateNav();
+}
+document.getElementById('prev').addEventListener('click',()=>{if(cur>0){cur--;render();}});
+document.getElementById('next').addEventListener('click',()=>{if(cur<steps.length-1){cur++;render();}});
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowLeft'&&cur>0){cur--;render();}
+  if(e.key==='ArrowRight'&&cur<steps.length-1){cur++;render();}
+});
+render();
+</script>
+</body>
+</html>
