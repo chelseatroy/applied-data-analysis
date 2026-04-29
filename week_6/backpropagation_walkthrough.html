@@ -2,50 +2,31 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Backpropagation — One Step, Every Number</title>
+<title>Backpropagation: How a Network Learns</title>
 <style>
 * { box-sizing: border-box; }
-body {
-  margin: 0; padding: 24px 24px 80px;
-  font-family: Georgia, serif;
-  background: #faf6f5;
-  color: #2e1a15;
-}
+body { margin: 0; padding: 24px 24px 80px; font-family: Georgia, serif; background: #faf6f5; color: #2e1a15; }
 h1 { font-size: 1.8rem; font-weight: bold; color: #b04030; margin: 0 0 4px; }
 #subtitle { color: #805030; font-style: italic; margin-bottom: 20px; }
 #step-title { font-size: 1.3rem; font-weight: bold; color: #b04030; margin-bottom: 12px; min-height: 1.6em; }
-#panels { display: flex; gap: 24px; align-items: flex-start; margin-bottom: 20px; }
-#explanation {
-  background: #ffffff; border: 1px solid #e0b0a0;
-  border-radius: 8px; padding: 16px 20px;
-  line-height: 1.7; margin-bottom: 20px; min-height: 110px;
-}
-#explanation ul { margin: 6px 0; padding-left: 20px; }
-#explanation li { margin: 4px 0; }
-#nav { position: fixed; bottom: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: center; gap: 16px; padding: 12px 24px 16px; background: #faf6f5; border-top: 1px solid #e0b0a0; z-index: 100; }
-button {
-  background: #faf0ee; border: 1px solid #b04030;
-  color: #b04030; padding: 8px 20px;
-  border-radius: 6px; cursor: pointer; font-size: 1.1rem;
-}
+#panels { display: flex; gap: 20px; align-items: flex-start; margin-bottom: 20px; }
+#explanation { background: #fff; border: 1px solid #e0b0a0; border-radius: 8px; padding: 16px 20px; line-height: 1.75; font-size: 1.05rem; min-height: 90px; }
+#nav { position: fixed; bottom: 0; left: 0; right: 0; background: #faf6f5; border-top: 1px solid #e0b0a0; z-index: 100; display: flex; align-items: center; justify-content: center; gap: 16px; padding: 12px 24px 16px; }
+button { background: #faf0ee; border: 1px solid #b04030; color: #b04030; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-size: 1.1rem; }
 button:hover { background: #f5d8d0; }
 button:disabled { opacity: 0.3; cursor: default; }
-.dot {
-  width: 10px; height: 10px; border-radius: 50%;
-  background: #f0c8b8; display: inline-block; margin: 0 3px;
-  cursor: pointer; transition: background 0.2s;
-}
+.dot { width: 10px; height: 10px; border-radius: 50%; background: #f0c8b8; display: inline-block; margin: 0 3px; cursor: pointer; transition: background 0.2s; }
 .dot.active { background: #b04030; }
 #step-counter { color: #805030; font-size: 0.9rem; margin-left: 16px; }
 </style>
 </head>
 <body>
-<h1>Backpropagation</h1>
-<div id="subtitle">One complete training step traced with exact numbers</div>
+<h1>Backpropagation: How a Network Learns</h1>
+<div id="subtitle">One complete training step traced with a concrete example</div>
 <div id="step-title"></div>
 <div id="panels">
-  <svg id="netsvg"   width="480" height="380" style="background:#200e08;border-radius:8px;flex-shrink:0"></svg>
-  <svg id="rightsvg" width="340" height="380" style="background:#200e08;border-radius:8px;flex-shrink:0"></svg>
+  <svg id="netsvg"   width="510" height="360" style="background:#1a0e08;border-radius:8px;flex-shrink:0"></svg>
+  <svg id="rightsvg" width="295" height="360" style="background:#1a0e08;border-radius:8px;flex-shrink:0"></svg>
 </div>
 <div id="explanation"></div>
 <div id="nav">
@@ -56,560 +37,556 @@ button:disabled { opacity: 0.3; cursor: default; }
 </div>
 
 <script>
-// ─── Palette ──────────────────────────────────────────────────────────────────
-const ICOL = '#4a9fd4';   // inputs — blue
-const HCOL = '#e08040';   // hidden — orange
-const OCOL = '#50c878';   // output — green
-const GOLD = '#f0c040';   // highlights
-const PCOL = '#e06070';   // error / delta — pink-red
-const GCOL = '#a080d0';   // gradients — purple
-const UCOL = '#50c0d8';   // updates — cyan
-const AXIS = '#6a3020';
-const TICK = '#806050';
+// ── Colors ────────────────────────────────────────────────────────────────────
+const ICOL = '#4a9fd4', HCOL = '#e08040', OCOL = '#50c878';
+const GOLD = '#f0c040', BLAME = '#e06070', UCOL = '#50c0d8';
+const TICK = '#806050', WPOS = '#c09060', WNEG = '#607098';
 
-// ─── Network definition ───────────────────────────────────────────────────────
-const X1=0.9, X2=0.3, TGT=1.0;
-const W11=0.5,  W21=0.4,  BH1=0.1;
-const W12=-0.3, W22=0.7,  BH2=-0.2;
-const V1=0.6,   V2=-0.4,  BO=0.05;
-const ETA=0.5;
+// ── Network values ────────────────────────────────────────────────────────────
+const X1 = 0.9, X2 = 0.3, TGT = 1.0;
+const AH1 = 0.662, AH2 = 0.435;
+const AO = 0.568, AON = 0.576;
+const COST = 0.093, COSTN = 0.090;
 
-// ─── Forward pass (exact, displayed at 3 dp) ──────────────────────────────────
-const ZH1=0.670, AH1=0.662;
-const ZH2=-0.260, AH2=0.435;
-const ZO=0.273, AO=0.568, COST=0.093;
+const W  = { w11:  0.500, w21:  0.400, w12: -0.300, w22:  0.700, v1:  0.600, v2: -0.400 };
+const WN = { w11:  0.506, w21:  0.402, w12: -0.305, w22:  0.698, v1:  0.635, v2: -0.377 };
 
-// ─── Backprop values ──────────────────────────────────────────────────────────
-const ERR=-0.432, SPO=0.245, DO=-0.106;
-const GV1=-0.070, GV2=-0.046;
-const SPH1=0.224, DH1=-0.014;
-const SPH2=0.246, DH2=0.010;
-const GW11=-0.013, GW21=-0.004, GW12=0.009, GW22=0.003;
+// ── Node positions ────────────────────────────────────────────────────────────
+const R  = 26;
+const I1 = {cx: 80,  cy: 145};
+const I2 = {cx: 80,  cy: 245};
+const H1 = {cx: 265, cy: 145};
+const H2 = {cx: 265, cy: 245};
+const OO = {cx: 445, cy: 195};
 
-// ─── Updated weights ──────────────────────────────────────────────────────────
-const V1N=0.635, V2N=-0.377;
-const W11N=0.506, W21N=0.402, W12N=-0.305, W22N=0.698;
-const ZON=0.306, AON=0.576, COSTN=0.090;
-
-// ─── Network node positions ───────────────────────────────────────────────────
-const NW=480, NH=380, R=22;
-const I1={cx:68,  cy:152};
-const I2={cx:68,  cy:248};
-const H1={cx:240, cy:150};
-const H2={cx:240, cy:250};
-const OO={cx:412, cy:200};
-
-// ─── Steps ────────────────────────────────────────────────────────────────────
-const steps = [
-  {
-    title: "The Network: 2 → 2 → 1",
-    html: `<p>To trace every number in backprop, we use a tiny network: 2 input neurons,
-    2 hidden neurons, 1 output neuron. Every weight and bias is shown on the left.</p>
-    <p><b>Input:</b> x₁ = 0.9, x₂ = 0.3 &nbsp;(two pixel values from an image)<br>
-    <b>Target:</b> y = 1.0 &nbsp;(the correct class should fire at 1)<br>
-    <b>Learning rate:</b> η = 0.5</p>
-    <p>The same algebra scales to 784→30→10 — the indices just get larger.</p>`
-  },
-  {
-    title: "Step 1 — Forward Pass: Hidden Layer",
-    html: `<p>Each hidden neuron computes a weighted sum of the inputs, adds its bias,
-    then applies sigmoid. <b style="color:#e08040">h₁</b> and <b style="color:#e08040">h₂</b>
-    activations are now shown inside the nodes on the left.</p>
-    <p>Notice that h₂ receives a negative total input (z = −0.26) — sigmoid of a
-    negative number is less than 0.5, so h₂ activates weakly (0.44).</p>`
-  },
-  {
-    title: "Step 2 — Forward Pass: Output & Cost",
-    html: `<p>The output neuron combines the hidden activations with its own weights,
-    adds its bias, and applies sigmoid. The result is
-    <b style="color:#50c878">a<sub>o</sub> = 0.568</b>.</p>
-    <p>The target was <b>1.0</b>. The quadratic cost measures the squared gap:</p>
-    <p style="font-family:monospace;margin-left:1em">
-      C = ½(a<sub>o</sub> − y)² = ½(0.568 − 1.0)² ≈ 0.093</p>
-    <p>Training means adjusting every weight so that C decreases on this example
-    and all others like it.</p>`
-  },
-  {
-    title: "Step 3 — Output Delta (δₒ)",
-    html: `<p>To know how to adjust the output weights, we first compute
-    <b style="color:#e06070">δₒ</b> — the "error signal" at the output neuron.
-    It answers: <em>how much should z<sub>o</sub> change to reduce the cost?</em></p>
-    <p>δₒ has two parts: the error (how wrong we are) multiplied by
-    σ'(z<sub>o</sub>) (how sensitive the output is to changes in z).
-    The negative sign means z<sub>o</sub> needs to <em>increase</em> — the output
-    is too low.</p>`
-  },
-  {
-    title: "Step 4 — Output Weight Gradients",
-    html: `<p>The gradient of the cost with respect to each output weight is simply
-    the upstream activation times δₒ:</p>
-    <p style="font-family:monospace;margin-left:1em">∂C/∂v = a<sub>prev</sub> × δₒ</p>
-    <p>Both gradients are <em>negative</em>. Subtracting a negative gradient in the
-    weight update will <em>increase</em> v₁ and v₂ — exactly the direction that
-    makes the output larger, which is what we need to reach the target of 1.0.</p>`
-  },
-  {
-    title: "Step 5 — Back-propagating the Error",
-    html: `<p>To update the input→hidden weights, we need error signals for the hidden
-    neurons too. We propagate δₒ <em>backwards</em> through v₁ and v₂, scaling
-    by each hidden neuron's own σ':</p>
-    <p style="font-family:monospace;margin-left:1em">
-      δ<sub>h</sub> = (w<sub>out</sub> × δₒ) × σ'(z<sub>h</sub>)</p>
-    <p>The pink arrows on the left show this backward flow. Note that δ<sub>h₂</sub>
-    is <em>positive</em> (v₂ is negative, δₒ is negative — negatives cancel), meaning
-    h₂'s input should decrease slightly.</p>`
-  },
-  {
-    title: "Step 6 — Input Weight Gradients",
-    html: `<p>Every input→hidden weight gradient follows the same rule:</p>
-    <p style="font-family:monospace;margin-left:1em">∂C/∂w = a<sub>prev</sub> × δ<sub>h</sub></p>
-    <p>Here a<sub>prev</sub> is the input value (x₁ or x₂) feeding into that weight.
-    All four gradients are small because the hidden deltas are small — the error signal
-    shrinks as it travels back through layers. In deep networks this
-    "vanishing gradient" can stall learning.</p>`
-  },
-  {
-    title: "Step 7 — Weight Update",
-    html: `<p>Every weight is nudged in the direction that reduces cost:</p>
-    <p style="font-family:monospace;margin-left:1em">w<sub>new</sub> = w<sub>old</sub> − η × ∂C/∂w</p>
-    <p>The updated weights are shown in <b style="color:#50c0d8">cyan</b> on the left.
-    Most changes are tiny (< 0.01) except v₁ and v₂ which move by ~0.03 — the output
-    layer receives the strongest gradient signal because it's closest to the error.</p>`
-  },
-  {
-    title: "After One Step: A Small Improvement",
-    html: `<p>With the updated weights, running the same input forward again gives
-    <b style="color:#50c878">a<sub>o</sub> = 0.576</b> — closer to the target 1.0
-    than before (0.568). Cost dropped from 0.093 to 0.090.</p>
-    <p>One step is a tiny improvement. Training repeats this for every image in the
-    dataset, over and over — 60,000 images × 30 epochs = <b>1.8 million updates</b>.
-    Each individual step is small, but cumulatively they find a set of weights
-    that generalizes across all training examples.</p>`
-  },
-];
-
-// ─── SVG helper ───────────────────────────────────────────────────────────────
-function el(tag, attrs={}, txt='') {
+// ── SVG helpers ───────────────────────────────────────────────────────────────
+function el(tag, attrs = {}, txt = '') {
   const e = document.createElementNS('http://www.w3.org/2000/svg', tag);
-  for (const [k,v] of Object.entries(attrs)) e.setAttribute(k,v);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
   if (txt) e.textContent = txt;
   return e;
 }
+function stxt(svg, x, y, s, fill, size = 10, bold = false, anchor = 'start') {
+  const a = {x, y, fill, 'font-size': size, 'text-anchor': anchor};
+  if (bold) a['font-weight'] = 'bold';
+  svg.appendChild(el('text', a, s));
+}
 
-// ─── Left SVG: network diagram ────────────────────────────────────────────────
+// Edge point on circle surface, facing toward target node
+function ep(from, to) {
+  const dx = to.cx - from.cx, dy = to.cy - from.cy;
+  const len = Math.hypot(dx, dy);
+  return {x: from.cx + dx / len * R, y: from.cy + dy / len * R};
+}
+
+// Add arrow marker for blame (backward) connections
+function addDefs(svg) {
+  const defs = el('defs');
+  const mk = el('marker', {id: 'arr', markerWidth: 7, markerHeight: 6, refX: 7, refY: 3, orient: 'auto'});
+  mk.appendChild(el('path', {d: 'M0,0 L7,3 L0,6 z', fill: BLAME, opacity: 0.9}));
+  defs.appendChild(mk);
+  svg.appendChild(defs);
+}
+
+// Draw a weighted connection
+function drawConn(svg, from, to, weight, mode) {
+  const p1 = ep(from, to);  // edge of source node, facing target
+  const p2 = ep(to, from);  // edge of target node, facing source
+
+  if (mode === 'blame') {
+    // Draw backward: from target side toward source side, arrow at source
+    svg.appendChild(el('line', {
+      x1: p2.x, y1: p2.y, x2: p1.x, y2: p1.y,
+      stroke: BLAME, 'stroke-width': 2.5, opacity: 0.85,
+      'stroke-dasharray': '6,4', 'marker-end': 'url(#arr)'
+    }));
+    return;
+  }
+
+  const thick = Math.abs(weight) * 6.5 + 0.8;
+  const pos = weight >= 0;
+  let stroke, opacity;
+  if      (mode === 'active')  { stroke = pos ? '#f0b870' : '#80b8f0'; opacity = 1.0; }
+  else if (mode === 'dim')     { stroke = pos ? '#3a2410' : '#182035'; opacity = 0.7; }
+  else if (mode === 'updated') { stroke = UCOL; opacity = 0.85; }
+  else                         { stroke = pos ? WPOS : WNEG; opacity = 0.80; }
+
+  svg.appendChild(el('line', {x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, stroke, 'stroke-width': thick, opacity}));
+}
+
+// Draw a neuron with glow proportional to activation
+function drawNeuron(svg, node, act, color, label, sublabel) {
+  const {cx, cy} = node;
+  const a = Math.max(0, Math.min(1, act));
+  if (a > 0.05) {
+    svg.appendChild(el('circle', {cx, cy, r: R + 16, fill: color, opacity: a * 0.07}));
+    svg.appendChild(el('circle', {cx, cy, r: R + 8,  fill: color, opacity: a * 0.16}));
+  }
+  svg.appendChild(el('circle', {cx, cy, r: R, fill: color, 'fill-opacity': 0.06 + a * 0.80,
+    stroke: color, 'stroke-width': 1.5, 'stroke-opacity': 0.45 + a * 0.55}));
+  const tc = a > 0.45 ? '#fff' : '#888';
+  if (label)    stxt(svg, cx, cy + (sublabel ? -5 : 5), label,    tc, 10,   true, 'middle');
+  if (sublabel) stxt(svg, cx, cy + 11,                  sublabel, tc, 10.5, true, 'middle');
+}
+
+// Dashed gold ring showing the target activation
+function drawTarget(svg) {
+  const {cx, cy} = OO;
+  svg.appendChild(el('circle', {cx, cy, r: R + 9, fill: 'none', stroke: GOLD,
+    'stroke-width': 1.5, 'stroke-dasharray': '5,3', opacity: 0.9}));
+  stxt(svg, cx, cy - R - 14, 'target: 1.0', GOLD, 9, true, 'middle');
+}
+
+function layerLabels(svg) {
+  stxt(svg, I1.cx, 342, 'Input',  TICK, 9, false, 'middle');
+  stxt(svg, H1.cx, 342, 'Hidden', TICK, 9, false, 'middle');
+  stxt(svg, OO.cx, 342, 'Output', TICK, 9, false, 'middle');
+}
+
+// ── RENDER NETWORK ────────────────────────────────────────────────────────────
 function renderNet(si) {
   const svg = document.getElementById('netsvg');
   svg.innerHTML = '';
+  addDefs(svg);
 
-  const showHA   = si >= 1;
-  const showOA   = si >= 2;
-  const hlO      = si === 3;
-  const hlOutW   = si === 4;
-  const hlBack   = si === 5;
-  const hlInW    = si === 6;
-  const useNewW  = si >= 7;
-  const showNew  = si === 8;
+  const act = {i1: 0, i2: 0, h1: 0, h2: 0, o: 0};
+  let cm = {i1h1: 'rest', i2h1: 'rest', i1h2: 'rest', i2h2: 'rest', h1o: 'rest', h2o: 'rest'};
+  let showTgt = false, useNew = false;
 
-  // Weights to display
-  const dw11 = useNewW ? W11N : W11;
-  const dw21 = useNewW ? W21N : W21;
-  const dw12 = useNewW ? W12N : W12;
-  const dw22 = useNewW ? W22N : W22;
-  const dv1  = useNewW ? V1N  : V1;
-  const dv2  = useNewW ? V2N  : V2;
-  const wCol = useNewW ? UCOL : '#c8a878';
+  if (si >= 1) { act.i1 = X1; act.i2 = X2; }
+  if (si >= 2) { act.h1 = AH1; act.h2 = AH2; }
+  if (si >= 3) { act.o = si >= 8 ? AON : AO; }
 
-  // ── Draw connections ──
-  function conn(x1,y1,x2,y2, isHL, isBack) {
-    const c = isBack ? PCOL : (isHL ? GOLD : '#5a3020');
-    const w = isHL||isBack ? 2.2 : 1.2;
-    const a = {x1,y1,x2,y2,stroke:c,'stroke-width':w,opacity:isHL||isBack?0.9:0.65};
-    if (isBack) a['stroke-dasharray']='5,3';
-    svg.appendChild(el('line',a));
+  if      (si === 1) { cm = {i1h1:'dim',    i2h1:'dim',    i1h2:'dim',    i2h2:'dim',    h1o:'dim',    h2o:'dim'   }; }
+  else if (si === 2) { cm = {i1h1:'active', i2h1:'active', i1h2:'active', i2h2:'active', h1o:'dim',    h2o:'dim'   }; }
+  else if (si === 3) { cm = {i1h1:'rest',   i2h1:'rest',   i1h2:'rest',   i2h2:'rest',   h1o:'active', h2o:'active'}; }
+  else if (si === 4) { showTgt = true;
+                       cm = {i1h1:'dim',    i2h1:'dim',    i1h2:'dim',    i2h2:'dim',    h1o:'dim',    h2o:'dim'   }; }
+  else if (si === 5) { showTgt = true;
+                       cm = {i1h1:'dim',    i2h1:'dim',    i1h2:'dim',    i2h2:'dim',    h1o:'blame',  h2o:'blame' }; }
+  else if (si === 6) { cm = {i1h1:'blame',  i2h1:'blame',  i1h2:'blame',  i2h2:'blame',  h1o:'dim',    h2o:'dim'   }; }
+  else if (si === 7) { useNew = true;
+                       cm = {i1h1:'updated',i2h1:'updated',i1h2:'updated',i2h2:'updated',h1o:'updated',h2o:'updated'}; }
+  else if (si === 8) { useNew = true; }
+
+  const wt = useNew ? WN : W;
+
+  // Connections behind neurons
+  drawConn(svg, I1, H1, wt.w11, cm.i1h1);
+  drawConn(svg, I2, H1, wt.w21, cm.i2h1);
+  drawConn(svg, I1, H2, wt.w12, cm.i1h2);
+  drawConn(svg, I2, H2, wt.w22, cm.i2h2);
+  drawConn(svg, H1, OO, wt.v1,  cm.h1o);
+  drawConn(svg, H2, OO, wt.v2,  cm.h2o);
+
+  if (showTgt) drawTarget(svg);
+
+  const sub = v => v > 0 ? v.toFixed(2) : null;
+  drawNeuron(svg, I1, act.i1, ICOL, 'in₁', sub(act.i1));
+  drawNeuron(svg, I2, act.i2, ICOL, 'in₂', sub(act.i2));
+  drawNeuron(svg, H1, act.h1, HCOL, 'h₁',  sub(act.h1));
+  drawNeuron(svg, H2, act.h2, HCOL, 'h₂',  sub(act.h2));
+  drawNeuron(svg, OO, act.o,  OCOL, 'out',  sub(act.o));
+
+  layerLabels(svg);
+
+  // Step 0: reading guide inside network panel
+  if (si === 0) {
+    stxt(svg, 18, 298, '── warm / thick: positive weight', WPOS, 9);
+    stxt(svg, 18, 314, '── cool / thick: negative weight', WNEG, 9);
+    stxt(svg, 18, 330, '●   brighter glow = more active',  '#a08060', 9);
   }
-  function wlabel(x,y,txt,anchor) {
-    const a = {x,y,fill:wCol,'font-size':9.5};
-    if(anchor) a['text-anchor']=anchor;
-    svg.appendChild(el('text',a,txt));
-  }
-
-  // Input → Hidden
-  conn(90,152, 218,152,  hlInW, false);                           // i1→h1 (≈horizontal)
-  conn(90,237, 221,172,  hlInW, hlBack);                          // i2→h1 (diagonal up)
-  conn(90,163, 221,229,  hlInW, hlBack);                          // i1→h2 (diagonal down)
-  conn(90,248, 218,248,  hlInW, false);                           // i2→h2 (≈horizontal)
-  // Hidden → Output
-  conn(262,156, 390,194, hlOutW, false);                          // h1→o
-  conn(262,244, 390,206, hlOutW, false);                          // h2→o
-
-  // Weight labels
-  wlabel(154, 143, `w₁₁=${dw11.toFixed(3)}`);
-  wlabel(154, 261, `w₂₂=${dw22.toFixed(3)}`);
-  wlabel(110, 193, `w₂₁=${dw21.toFixed(3)}`, 'end');
-  wlabel(175, 225, `w₁₂=${dw12.toFixed(3)}`);
-  wlabel(325, 163, `v₁=${dv1.toFixed(3)}`);
-  wlabel(325, 242, `v₂=${dv2.toFixed(3)}`);
-
-  // ── Draw nodes ──
-  function node(cx,cy, fill, label, valTxt, valCol, hlRing) {
-    const stroke = hlRing ? GOLD : '#3a1808';
-    const sw = hlRing ? 2.5 : 1;
-    svg.appendChild(el('circle',{cx,cy,r:R,fill:'#2a1208',stroke,
-      'stroke-width':sw}));
-    svg.appendChild(el('text',{x:cx,y:cy-5,'text-anchor':'middle',
-      fill,'font-size':9,'font-weight':'bold'},label));
-    if (valTxt) {
-      svg.appendChild(el('text',{x:cx,y:cy+10,'text-anchor':'middle',
-        fill:valCol,'font-size':10,'font-weight':'bold'},valTxt));
-    }
-  }
-
-  // Input nodes
-  node(I1.cx,I1.cy, ICOL, 'x₁', `${X1}`, ICOL, false);
-  node(I2.cx,I2.cy, ICOL, 'x₂', `${X2}`, ICOL, false);
-
-  // Hidden nodes
-  node(H1.cx,H1.cy, HCOL, 'h₁',
-    showHA ? AH1.toFixed(3) : null, HCOL, hlBack&&false);
-  node(H2.cx,H2.cy, HCOL, 'h₂',
-    showHA ? AH2.toFixed(3) : null, HCOL, hlBack&&false);
-
-  // Output node
-  const oVal  = showNew  ? AON.toFixed(3)
-              : showOA   ? AO.toFixed(3)
-              : null;
-  const oVCol = showNew ? GOLD : OCOL;
-  node(OO.cx,OO.cy, OCOL, 'o', oVal, oVCol, hlO||showNew);
-
-  // ── Annotations ──
-  // Target label
-  svg.appendChild(el('text',{x:OO.cx+30,y:OO.cy-10,fill:'#706050',
-    'font-size':9},'← y = 1.0'));
-
-  // Bias labels (step 0 only)
-  if (si===0) {
-    const ba = {fill:'#706050','font-size':8.5,'font-style':'italic'};
-    svg.appendChild(el('text',{...ba,x:H1.cx+26,y:H1.cy+8},`b=+0.10`));
-    svg.appendChild(el('text',{...ba,x:H2.cx+26,y:H2.cy+8},`b=−0.20`));
-    svg.appendChild(el('text',{...ba,x:OO.cx-10,y:OO.cy+32},`b=+0.05`));
-  }
-
-  // δ annotations
-  if (si>=3) {
-    svg.appendChild(el('text',{x:OO.cx,y:OO.cy-30,'text-anchor':'middle',
-      fill:PCOL,'font-size':10,'font-weight':'bold'},`δₒ=${DO.toFixed(3)}`));
-  }
-  if (si>=5) {
-    svg.appendChild(el('text',{x:H1.cx,y:H1.cy-30,'text-anchor':'middle',
-      fill:PCOL,'font-size':9.5,'font-weight':'bold'},`δₕ₁=${DH1.toFixed(3)}`));
-    svg.appendChild(el('text',{x:H2.cx,y:H2.cy+40,'text-anchor':'middle',
-      fill:PCOL,'font-size':9.5,'font-weight':'bold'},`δₕ₂=+${DH2.toFixed(3)}`));
-  }
-  // Cost annotation
-  if (si===2) {
-    svg.appendChild(el('text',{x:NW-10,y:30,'text-anchor':'end',
-      fill:OCOL,'font-size':10},`C = ${COST}`));
-  }
-  if (si===8) {
-    svg.appendChild(el('text',{x:NW-10,y:30,'text-anchor':'end',
-      fill:GOLD,'font-size':10},`C = ${COSTN} ↓`));
-  }
-
-  // Layer labels
-  svg.appendChild(el('text',{x:I1.cx,y:NH-10,'text-anchor':'middle',
-    fill:TICK,'font-size':9,'font-style':'italic'},'Input'));
-  svg.appendChild(el('text',{x:H1.cx,y:NH-10,'text-anchor':'middle',
-    fill:TICK,'font-size':9,'font-style':'italic'},'Hidden'));
-  svg.appendChild(el('text',{x:OO.cx,y:NH-10,'text-anchor':'middle',
-    fill:TICK,'font-size':9,'font-style':'italic'},'Output'));
-  svg.appendChild(el('text',{x:NW/2,y:14,'text-anchor':'middle',
-    fill:TICK,'font-size':9,'font-style':'italic'},'2 → 2 → 1  (η = 0.5)'));
 }
 
-// ─── Right SVG ────────────────────────────────────────────────────────────────
-const RW=340, RH=380;
+// ── RIGHT PANEL helpers ───────────────────────────────────────────────────────
+const RW = 295;
 
-function txt(svg,x,y,s,fill,size=10.5,mono=false,bold=false) {
-  const a={x,y,fill,'font-size':size};
-  if(mono)  a['font-family']='monospace';
-  if(bold)  a['font-weight']='bold';
-  svg.appendChild(el('text',a,s));
+function rtxt(svg, x, y, s, fill, size = 10, bold = false, anchor = 'start') {
+  const a = {x, y, fill, 'font-size': size, 'text-anchor': anchor};
+  if (bold) a['font-weight'] = 'bold';
+  svg.appendChild(el('text', a, s));
 }
-function hdr(svg,s) {
-  svg.appendChild(el('text',{x:RW/2,y:16,'text-anchor':'middle',
-    fill:'#a06848','font-size':11,'font-style':'italic'},s));
+function rsep(svg, y) {
+  svg.appendChild(el('line', {x1: 14, y1: y, x2: RW - 14, y2: y, stroke: '#5a3020', 'stroke-width': 0.5}));
 }
-function sep(svg,y) {
-  svg.appendChild(el('line',{x1:14,y1:y,x2:RW-14,y2:y,
-    stroke:'#5a3020','stroke-width':0.5}));
+function mono(svg, x, y, s, fill, size = 9, bold = false) {
+  const a = {x, y, fill, 'font-size': size, 'font-family': "'Courier New', monospace"};
+  if (bold) a['font-weight'] = 'bold';
+  svg.appendChild(el('text', a, s));
 }
-function blank(svg,y,s,c='#706050') {
-  svg.appendChild(el('text',{x:20,y,fill:c,'font-size':10},s));
+function rbar(svg, x, y, val, maxW, color, label, valStr) {
+  svg.appendChild(el('rect', {x, y: y - 2, width: maxW, height: 16, fill: '#2a1208', rx: 3}));
+  if (val > 0) svg.appendChild(el('rect', {x, y: y - 2, width: Math.round(val * maxW), height: 16, fill: color, 'fill-opacity': 0.85, rx: 3}));
+  rtxt(svg, x - 6, y + 10, label, TICK, 9.5, false, 'end');
+  if (valStr !== undefined) rtxt(svg, x + maxW + 6, y + 10, valStr, color, 10, true);
 }
+
+// ── RIGHT PANEL per step ──────────────────────────────────────────────────────
+
+function drawR0(svg) {
+  rtxt(svg, RW / 2, 20, 'How to read this diagram', TICK, 10, true, 'middle');
+  rsep(svg, 28);
+  rtxt(svg, 18, 50, 'Connections:', '#c09060', 9.5, true);
+  svg.appendChild(el('line', {x1: 18, y1: 66, x2: 160, y2: 66, stroke: '#f0b870', 'stroke-width': 5, opacity: 0.9}));
+  rtxt(svg, 166, 71, 'positive weight', WPOS, 9);
+  svg.appendChild(el('line', {x1: 18, y1: 88, x2: 160, y2: 88, stroke: '#80b8f0', 'stroke-width': 5, opacity: 0.9}));
+  rtxt(svg, 166, 93, 'negative weight', WNEG, 9);
+  svg.appendChild(el('line', {x1: 18, y1: 108, x2: 80, y2: 108, stroke: '#f0b870', 'stroke-width': 7, opacity: 0.9}));
+  svg.appendChild(el('line', {x1: 100, y1: 108, x2: 160, y2: 108, stroke: '#f0b870', 'stroke-width': 2, opacity: 0.9}));
+  rtxt(svg, 166, 113, 'thicker = stronger', WPOS, 9);
+  rsep(svg, 126);
+  rtxt(svg, 18, 146, 'Neurons:', '#c09060', 9.5, true);
+  svg.appendChild(el('circle', {cx: 36, cy: 172, r: 16, fill: OCOL, 'fill-opacity': 0.85, stroke: OCOL, 'stroke-width': 1.5, 'stroke-opacity': 0.9}));
+  svg.appendChild(el('circle', {cx: 36, cy: 172, r: 24, fill: OCOL, opacity: 0.15}));
+  rtxt(svg, 60, 177, 'active (bright)', OCOL, 9);
+  svg.appendChild(el('circle', {cx: 36, cy: 212, r: 16, fill: OCOL, 'fill-opacity': 0.07, stroke: OCOL, 'stroke-width': 1.5, 'stroke-opacity': 0.45}));
+  rtxt(svg, 60, 217, 'inactive (dark)', TICK, 9);
+  rsep(svg, 236);
+  rtxt(svg, 18, 256, 'Backward pass:', '#c09060', 9.5, true);
+  svg.appendChild(el('line', {x1: 18, y1: 274, x2: 160, y2: 274, stroke: BLAME, 'stroke-width': 2.5, 'stroke-dasharray': '6,4', opacity: 0.85}));
+  rtxt(svg, 166, 279, 'blame signal', BLAME, 9);
+  svg.appendChild(el('line', {x1: 18, y1: 296, x2: 100, y2: 296, stroke: UCOL, 'stroke-width': 2.5, opacity: 0.85}));
+  rtxt(svg, 166, 301, 'updated weight', UCOL, 9);
+}
+
+function drawR1(svg) {
+  rtxt(svg, RW / 2, 20, 'Training example', TICK, 10, true, 'middle');
+  rsep(svg, 28);
+  const bx = 82, mw = 174;
+  rbar(svg, bx, 52,  X1,  mw, ICOL, 'input 1', '0.90');
+  rbar(svg, bx, 80,  X2,  mw, ICOL, 'input 2', '0.30');
+  rsep(svg, 108);
+  rbar(svg, bx, 130, TGT, mw, GOLD, 'target output', '1.00');
+  rsep(svg, 160);
+  rtxt(svg, 18, 180, 'The output should reach 1.0', TICK, 9.5);
+  rtxt(svg, 18, 198, '(fully lit) for this example.', TICK, 9.5);
+  rtxt(svg, 18, 220, 'The network hasn\'t computed', TICK, 9.5);
+  rtxt(svg, 18, 238, 'anything yet — it\'s just', TICK, 9.5);
+  rtxt(svg, 18, 256, 'taking in the inputs.', TICK, 9.5);
+}
+
+function drawR2(svg) {
+  rtxt(svg, RW / 2, 18, 'Computing h1 and h2', TICK, 10, true, 'middle');
+  rsep(svg, 26);
+
+  // ── h1 ──────────────────────────────────────────────────
+  rtxt(svg, 14, 41, 'h1', HCOL, 9.5, true);
+  mono(svg, 14, 57,  'in1(0.90)', ICOL,      9, true);
+  mono(svg, 78, 57,  '×',         TICK,      9);
+  mono(svg, 88, 57,  '(+0.500)',  WPOS,      9, true);
+  mono(svg, 144, 57, '=',         TICK,      9);
+  mono(svg, 154, 57, '+0.450',    '#70c870', 9, true);
+  mono(svg, 14, 72,  'in2(0.30)', ICOL,      9, true);
+  mono(svg, 78, 72,  '×',         TICK,      9);
+  mono(svg, 88, 72,  '(+0.400)',  WPOS,      9, true);
+  mono(svg, 144, 72, '=',         TICK,      9);
+  mono(svg, 154, 72, '+0.120',    '#70c870', 9, true);
+  mono(svg, 88, 87,  '   bias',   TICK,      9);
+  mono(svg, 144, 87, '=',         TICK,      9);
+  mono(svg, 154, 87, '+0.100',    '#70c870', 9, true);
+  rsep(svg, 95);
+  mono(svg, 88, 107,  '  total',  TICK,      9, true);
+  mono(svg, 144, 107, '=',        TICK,      9);
+  mono(svg, 154, 107, '+0.670',   HCOL,      9.5, true);
+  rtxt(svg, 14, 122,  'sigmoid(0.670)', TICK, 9);
+  rtxt(svg, 144, 122, '→',  TICK, 9);
+  rtxt(svg, 154, 122, '0.662', HCOL, 10, true);
+  svg.appendChild(el('rect', {x: 202, y: 112, width: 72, height: 13, fill: '#2a1208', rx: 2}));
+  svg.appendChild(el('rect', {x: 202, y: 112, width: Math.round(AH1 * 72), height: 13, fill: HCOL, 'fill-opacity': 0.8, rx: 2}));
+
+  rsep(svg, 134);
+
+  // ── h2 ──────────────────────────────────────────────────
+  rtxt(svg, 14, 149, 'h2', HCOL, 9.5, true);
+  mono(svg, 14, 165,  'in1(0.90)', ICOL,      9, true);
+  mono(svg, 78, 165,  '×',         TICK,      9);
+  mono(svg, 88, 165,  '(−0.300)',  WNEG,      9, true);
+  mono(svg, 144, 165, '=',         TICK,      9);
+  mono(svg, 154, 165, '−0.270',    BLAME,     9, true);
+  rtxt(svg, 207, 165, '← large!',  BLAME,     8, true);
+  mono(svg, 14, 180,  'in2(0.30)', ICOL,      9, true);
+  mono(svg, 78, 180,  '×',         TICK,      9);
+  mono(svg, 88, 180,  '(+0.700)',  WPOS,      9, true);
+  mono(svg, 144, 180, '=',         TICK,      9);
+  mono(svg, 154, 180, '+0.210',    '#70c870', 9, true);
+  mono(svg, 88, 195,  '   bias',   TICK,      9);
+  mono(svg, 144, 195, '=',         TICK,      9);
+  mono(svg, 154, 195, '−0.200',    '#d07070', 9, true);
+  rsep(svg, 203);
+  mono(svg, 88, 215,  '  total',   TICK,      9, true);
+  mono(svg, 144, 215, '=',         TICK,      9);
+  mono(svg, 154, 215, '−0.260',    '#d07070', 9.5, true);
+  rtxt(svg, 14, 230,  'sigmoid(−0.260)', TICK, 9);
+  rtxt(svg, 144, 230, '→',  TICK, 9);
+  rtxt(svg, 154, 230, '0.435', HCOL, 10, true);
+  svg.appendChild(el('rect', {x: 202, y: 220, width: 72, height: 13, fill: '#2a1208', rx: 2}));
+  svg.appendChild(el('rect', {x: 202, y: 220, width: Math.round(AH2 * 72), height: 13, fill: HCOL, 'fill-opacity': 0.8, rx: 2}));
+
+  rsep(svg, 244);
+  rtxt(svg, 14, 260, 'in1 is bright (0.90) — even through', TICK, 9);
+  rtxt(svg, 14, 276, 'the negative connection, its pull', TICK, 9);
+  rtxt(svg, 14, 292, 'on h2 beats in2\'s push.', TICK, 9);
+}
+
+function drawR3(svg) {
+  rtxt(svg, RW / 2, 18, 'Computing the output', TICK, 10, true, 'middle');
+  rsep(svg, 26);
+
+  rtxt(svg, 14, 41, 'out', OCOL, 9.5, true);
+  mono(svg, 14, 57,  'h1 (0.662)', HCOL,      9, true);
+  mono(svg, 84, 57,  '×',          TICK,      9);
+  mono(svg, 94, 57,  '(+0.600)',   WPOS,      9, true);
+  mono(svg, 150, 57, '=',          TICK,      9);
+  mono(svg, 160, 57, '+0.397',     '#70c870', 9, true);
+  mono(svg, 14, 72,  'h2 (0.435)', HCOL,      9, true);
+  mono(svg, 84, 72,  '×',          TICK,      9);
+  mono(svg, 94, 72,  '(−0.400)',   WNEG,      9, true);
+  mono(svg, 150, 72, '=',          TICK,      9);
+  mono(svg, 160, 72, '−0.174',     BLAME,     9, true);
+  mono(svg, 94, 87,  '   bias',    TICK,      9);
+  mono(svg, 150, 87, '=',          TICK,      9);
+  mono(svg, 160, 87, '+0.050',     '#70c870', 9, true);
+  rsep(svg, 95);
+  mono(svg, 94, 107,  '  total',   TICK,      9, true);
+  mono(svg, 150, 107, '=',         TICK,      9);
+  mono(svg, 160, 107, '+0.273',    OCOL,      9.5, true);
+  rtxt(svg, 14, 122,  'sigmoid(0.273)', TICK, 9);
+  rtxt(svg, 150, 122, '→',  TICK, 9);
+  rtxt(svg, 160, 122, '0.568', OCOL, 10, true);
+  svg.appendChild(el('rect', {x: 208, y: 112, width: 72, height: 13, fill: '#2a1208', rx: 2}));
+  svg.appendChild(el('rect', {x: 208, y: 112, width: Math.round(AO * 72), height: 13, fill: OCOL, 'fill-opacity': 0.8, rx: 2}));
+
+  rsep(svg, 134);
+
+  // Gap visualization
+  const bx = 62, mw = 190;
+  rbar(svg, bx, 154, TGT, mw, GOLD, 'target', '1.000');
+  rbar(svg, bx, 180, AO,  mw, OCOL, 'output', '0.568');
+  const gapX = bx + Math.round(AO * mw);
+  const gapW = Math.round((TGT - AO) * mw);
+  svg.appendChild(el('rect', {x: gapX, y: 178, width: gapW, height: 16, fill: BLAME, 'fill-opacity': 0.38, rx: 2}));
+  rtxt(svg, gapX + gapW / 2, 208, 'gap: 0.432', BLAME, 9, true, 'middle');
+}
+
+function drawR4(svg) {
+  rtxt(svg, RW / 2, 20, 'The gap', TICK, 10, true, 'middle');
+  rsep(svg, 28);
+  const bx = 82, mw = 174;
+  rbar(svg, bx, 52,  TGT, mw, GOLD, 'target', '1.00');
+  rbar(svg, bx, 80,  AO,  mw, OCOL, 'output', '0.57');
+  // Highlight the gap
+  const gapX = bx + Math.round(AO * mw);
+  const gapW = Math.round((TGT - AO) * mw);
+  svg.appendChild(el('rect', {x: gapX, y: 78, width: gapW, height: 16, fill: BLAME, 'fill-opacity': 0.38, rx: 2}));
+  rtxt(svg, gapX + gapW / 2, 106, 'gap: 0.43', BLAME, 9, true, 'middle');
+  rsep(svg, 120);
+  rtxt(svg, 18, 140, 'Output was 0.43 short of target.', TICK, 9.5);
+  rtxt(svg, 18, 160, 'Bigger gap = bigger push to fix.', TICK, 9.5);
+  rsep(svg, 178);
+  rtxt(svg, 18, 198, 'Cost = (gap)² ÷ 2', '#c09060', 9.5);
+  rtxt(svg, 18, 218, '     = (0.43)² ÷ 2', TICK, 9.5);
+  rtxt(svg, 18, 240, '     = 0.093', BLAME, 12, true);
+  rsep(svg, 260);
+  rtxt(svg, 18, 278, 'Training means driving this', TICK, 9.5);
+  rtxt(svg, 18, 296, 'number down.', TICK, 9.5);
+}
+
+function drawR5(svg) {
+  rtxt(svg, RW / 2, 20, 'Output weights: not adjusted equally', TICK, 10, true, 'middle');
+  rsep(svg, 28);
+  rtxt(svg, 14, 46, 'Adjustment ∝ source neuron activation:', TICK, 9.5);
+  rsep(svg, 54);
+
+  // Mini table: source | activation | nudge
+  const cx = [14, 114, 210];
+  rtxt(svg, cx[0], 70, 'source',     TICK, 9, true);
+  rtxt(svg, cx[1], 70, 'activation', TICK, 9, true, 'middle');
+  rtxt(svg, cx[2], 70, 'nudge',      TICK, 9, true, 'middle');
+  rsep(svg, 76);
+  rtxt(svg, cx[0], 92,  'h1 → v1', HCOL, 9.5, true);
+  rtxt(svg, cx[1], 92,  '0.662',   HCOL, 9.5, false, 'middle');
+  rtxt(svg, cx[2], 92,  '+0.035',  GOLD, 9.5, true, 'middle');
+  rtxt(svg, cx[0], 112, 'h2 → v2', HCOL, 9.5, true);
+  rtxt(svg, cx[1], 112, '0.435',   HCOL, 9.5, false, 'middle');
+  rtxt(svg, cx[2], 112, '+0.023',  GOLD, 9.5, true, 'middle');
+  rsep(svg, 120);
+
+  // Visual activation bars
+  const bx = 82, mw = 140;
+  rbar(svg, bx, 140, AH1, mw, HCOL, 'h1', null);
+  rbar(svg, bx, 166, AH2, mw, HCOL, 'h2', null);
+  rsep(svg, 192);
+  rtxt(svg, 14, 210, 'Brighter source → bigger nudge.', TICK, 9.5);
+  rtxt(svg, 14, 228, '"Neurons that fire together,', TICK, 9.5);
+  rtxt(svg, 14, 246, 'wire together": active connections', TICK, 9.5);
+  rtxt(svg, 14, 264, 'get the strongest reinforcement.', TICK, 9.5);
+}
+
+function drawR6(svg) {
+  rtxt(svg, RW / 2, 20, 'Blame signal: getting smaller', TICK, 10, true, 'middle');
+  rsep(svg, 28);
+  rtxt(svg, 14, 46, 'At output weights (largest shift):', TICK, 9.5);
+
+  // Bars normalized so v1 (shift=0.035) = full width; actual shifts shown on right
+  const bx = 44, mw = 180;
+  rbar(svg, bx, 60,  1.000, mw, BLAME, 'v1',  null);
+  rtxt(svg, bx + mw + 8, 72,  '+0.035', GOLD, 9, true);
+  rbar(svg, bx, 84,  0.657, mw, BLAME, 'v2',  null);
+  rtxt(svg, bx + mw + 8, 96,  '+0.023', GOLD, 9, true);
+
+  rsep(svg, 110);
+  rtxt(svg, 14, 128, 'At hidden weights (signal shrank):', TICK, 9.5);
+  rbar(svg, bx, 142, 0.171, mw, BLAME, 'w11', null);
+  rtxt(svg, bx + mw + 8, 154, '+0.006', GOLD, 9, true);
+  rbar(svg, bx, 164, 0.057, mw, BLAME, 'w21', null);
+  rtxt(svg, bx + mw + 8, 176, '+0.002', GOLD, 9, true);
+  rbar(svg, bx, 186, 0.143, mw, BLAME, 'w12', null);
+  rtxt(svg, bx + mw + 8, 198, '−0.005', GOLD, 9, true);
+  rbar(svg, bx, 208, 0.057, mw, BLAME, 'w22', null);
+  rtxt(svg, bx + mw + 8, 220, '−0.002', GOLD, 9, true);
+
+  rsep(svg, 232);
+  rtxt(svg, 14, 250, 'Each layer passes back only its', TICK, 9.5);
+  rtxt(svg, 14, 268, 'share of the blame. In a 30-layer', TICK, 9.5);
+  rtxt(svg, 14, 286, 'network this can nearly vanish —', TICK, 9.5);
+  rtxt(svg, 14, 304, 'the vanishing gradient problem.', TICK, 9.5);
+}
+
+function drawR7(svg) {
+  rtxt(svg, RW / 2, 20, 'Weight changes after one step', TICK, 10, true, 'middle');
+  rsep(svg, 28);
+  const cx = [18, 104, 172, 240];
+  rtxt(svg, cx[0], 46, 'weight', TICK, 9, true);
+  rtxt(svg, cx[1], 46, 'before', TICK, 9, true, 'middle');
+  rtxt(svg, cx[2], 46, 'after',  TICK, 9, true, 'middle');
+  rtxt(svg, cx[3], 46, 'change', TICK, 9, true, 'middle');
+  rsep(svg, 52);
+  const rows = [
+    ['v₁',   W.v1.toFixed(3),  WN.v1.toFixed(3),  '+0.035', HCOL],
+    ['v₂',  W.v2.toFixed(3),   WN.v2.toFixed(3),  '+0.023', HCOL],
+    ['w₁₁',  W.w11.toFixed(3), WN.w11.toFixed(3), '+0.006', ICOL],
+    ['w₂₁',  W.w21.toFixed(3), WN.w21.toFixed(3), '+0.002', ICOL],
+    ['w₁₂',  W.w12.toFixed(3), WN.w12.toFixed(3), '−0.005', ICOL],
+    ['w₂₂',  W.w22.toFixed(3), WN.w22.toFixed(3), '−0.002', ICOL],
+  ];
+  rows.forEach(([name, old, nw, delta, col], i) => {
+    const y = 70 + i * 28;
+    rtxt(svg, cx[0], y, name,  col,     10,  true);
+    rtxt(svg, cx[1], y, old,   '#a08060', 9.5, false, 'middle');
+    rtxt(svg, cx[2], y, nw,    UCOL,    9.5,  true,  'middle');
+    rtxt(svg, cx[3], y, delta, GOLD,    9,    true,  'middle');
+  });
+  rsep(svg, 246);
+  rtxt(svg, 18, 264, 'Output weights (v) moved most —', TICK, 9.5);
+  rtxt(svg, 18, 282, 'they were closest to the error.', TICK, 9.5);
+  rtxt(svg, 18, 300, 'Input weights moved least.', TICK, 9.5);
+}
+
+function drawR8(svg) {
+  rtxt(svg, RW / 2, 20, 'After one update', TICK, 10, true, 'middle');
+  rsep(svg, 28);
+  const mid = 110;
+  rtxt(svg, 72,  mid - 52, 'Before', TICK,  10, true,  'middle');
+  rtxt(svg, 72,  mid - 26, '0.57',   OCOL,  20, true,  'middle');
+  rtxt(svg, 72,  mid - 6,  'output', TICK,  9,  false, 'middle');
+  rtxt(svg, 72,  mid + 22, '0.093',  BLAME, 16, true,  'middle');
+  rtxt(svg, 72,  mid + 40, 'cost',   TICK,  9,  false, 'middle');
+  rtxt(svg, RW / 2, mid - 14, '→', GOLD, 24, true, 'middle');
+  rtxt(svg, RW / 2, mid + 32, '→', GOLD, 24, true, 'middle');
+  rtxt(svg, 222, mid - 52, 'After',  TICK,  10, true,  'middle');
+  rtxt(svg, 222, mid - 26, '0.576',  GOLD,  20, true,  'middle');
+  rtxt(svg, 222, mid - 6,  'output', TICK,  9,  false, 'middle');
+  rtxt(svg, 222, mid + 22, '0.090',  GOLD,  16, true,  'middle');
+  rtxt(svg, 222, mid + 40, 'cost',   TICK,  9,  false, 'middle');
+  rsep(svg, mid + 58);
+  rtxt(svg, 18, mid + 78,  'Tiny improvement — by design.', TICK, 9.5);
+  rtxt(svg, 18, mid + 96,  'Real training: tens of thousands', TICK, 9.5);
+  rtxt(svg, 18, mid + 114, 'of examples × 30 epochs =', TICK, 9.5);
+  rtxt(svg, 18, mid + 132, 'millions of updates.', TICK, 9.5);
+  rtxt(svg, 18, mid + 154, 'They accumulate.', '#a08060', 9.5, true);
+}
+
+// ── DISPATCH ──────────────────────────────────────────────────────────────────
+const rightDrawers = [drawR0, drawR1, drawR2, drawR3, drawR4, drawR5, drawR6, drawR7, drawR8];
 
 function renderRight(si) {
-  const svg=document.getElementById('rightsvg');
-  svg.innerHTML='';
-  switch(si) {
-    case 0: drawSetup(svg);      break;
-    case 1: drawFwdH(svg);       break;
-    case 2: drawFwdO(svg);       break;
-    case 3: drawDeltaO(svg);     break;
-    case 4: drawGradsOut(svg);   break;
-    case 5: drawBackH(svg);      break;
-    case 6: drawGradsIn(svg);    break;
-    case 7: drawUpdates(svg);    break;
-    case 8: drawResult(svg);     break;
-  }
+  const svg = document.getElementById('rightsvg');
+  svg.innerHTML = '';
+  rightDrawers[si](svg);
 }
 
-// ── Setup ──
-function drawSetup(svg) {
-  hdr(svg,'Initial values');
-  const rows=[
-    ['Inputs',  `x₁ = 0.9   x₂ = 0.3`, ICOL],
-    ['Target',  `y  = 1.0`,             GOLD],
-    ['w₁₁,w₂₁,b','0.500   0.400   +0.10 → h₁','#c8a878'],
-    ['w₁₂,w₂₂,b','-0.300   0.700   −0.20 → h₂','#c8a878'],
-    ['v₁, v₂, b',  '0.600  −0.400   +0.05 → o', '#c8a878'],
-    ['η (lr)',   '0.5',                 '#d0c090'],
-  ];
-  rows.forEach(([label,val,col],i)=>{
-    const y=46+i*38;
-    txt(svg,20,y,label,TICK,9.5);
-    sep(svg,y+7);
-    txt(svg,24,y+24,val,col,10,true);
-  });
-  sep(svg,282);
-  txt(svg,20,298,'Goal: find weights that minimize',TICK,9.5);
-  txt(svg,20,316,'C = ½(aₒ − y)²  across all training',TICK,9.5);
-  txt(svg,20,334,'examples. Backprop shows how.',TICK,9.5);
-}
+// ── STEPS ─────────────────────────────────────────────────────────────────────
+const steps = [
+  {
+    title: "The Network",
+    html: `<p>This is a small neural network: 2 inputs, 2 hidden neurons, 1 output. Each connection has a weight — a thick warm line carries a strong positive signal; a thick cool line carries a strong negative one. A neuron's brightness shows how active it is. We'll trace one complete training step — start to finish — with real numbers.</p>`
+  },
+  {
+    title: "A training example comes in",
+    html: `<p>The network receives a training example. Input 1 glows bright at <b>0.9</b> — nearly full. Input 2 is dimmer at <b>0.3</b>. We already know the correct answer for this example: the output should reach <b>1.0</b>, fully lit. The network hasn't computed anything yet — it's just taking in the inputs.</p>`
+  },
+  {
+    title: "Signals travel to the hidden layer",
+    html: `<p>Each input sends its signal forward along every connection. A bright neuron multiplied by a strong positive weight contributes more; a negative weight subtracts. Hidden neuron 1 receives a strong net signal and activates at <b>0.66</b>. Hidden neuron 2 receives a mixed signal (including a negative contribution from input 1) and activates at <b>0.44</b>. Notice that h1 ended up brighter — that will matter in a moment.</p>`
+  },
+  {
+    title: "The network makes a prediction",
+    html: `<p>The hidden neurons send their signals onward. The output neuron combines them — a positive contribution from h1, a negative drag from h2 — and activates at <b>0.57</b>. That's the network's current prediction. The target was <b>1.0</b>. The network was wrong, and now we have to figure out which weights to change, and by how much.</p>`
+  },
+  {
+    title: "Measuring the mistake",
+    html: `<p>The output fired at <b>0.57</b> but should have reached <b>1.0</b>. The gap is <b>0.43</b>. We square that gap and halve it to get the cost: <b>0.093</b>. Squaring matters because it makes larger mistakes far more expensive than small ones — the network is pushed hardest to fix its worst errors first. Training means driving this cost down across every training example.</p>`
+  },
+  {
+    title: "Which connections most influenced the output?",
+    html: `<p>The output was too low, so we need to increase it. We adjust the output weights — but not equally. The adjustment is proportional to how active the neuron feeding into each weight was. <b>h1 was brighter (0.66)</b>, so the connection from h1 gets the larger nudge. h2 was dimmer (0.44), so its connection shifts less. Brighter neuron → more responsible → bigger adjustment. This is the core of "neurons that fire together, wire together."</p>`
+  },
+  {
+    title: "The adjustment request travels backwards",
+    html: `<p>The nudge request doesn't stop at the output weights. It travels backwards through the hidden layer, scaled by each weight it passes through. The hidden weights receive their own adjustment requests — but notice they're <em>weaker</em>. The signal shrinks as it moves back through the network. In a 30-layer network, by the time this signal reaches the earliest weights it may have nearly vanished — the vanishing gradient problem that modern activation functions were designed to address.</p>`
+  },
+  {
+    title: "Every weight gets a nudge",
+    html: `<p>Every weight in the network shifts slightly in the direction that reduces the cost. The output weights (<b>v₁</b> and <b>v₂</b>) shift the most — they received the strongest adjustment request because they were closest to the error. The input weights shift by less than a hundredth, because the correction signal weakened as it traveled back through the hidden layer.</p>`
+  },
+  {
+    title: "After one update: slightly closer",
+    html: `<p>With the updated weights, running the same example forward gives <b>0.576</b> — closer to the target of 1.0 than before (0.568). Cost dropped from 0.093 to 0.090. A tiny change — but training runs this same process across tens of thousands of examples, hundreds of times each. Every individual step is small. Cumulatively, they converge toward a network that gets it right.</p>`
+  },
+];
 
-// ── Forward: hidden ──
-function drawFwdH(svg) {
-  hdr(svg,'Forward pass — hidden layer');
-  let y=36;
-  const line=(s,c,sz=10.5,mono=false)=>{txt(svg,20,y,s,c,sz,mono);y+=20;};
+// ── NAVIGATION ────────────────────────────────────────────────────────────────
+let cur = 0;
 
-  line('z_h1 = x₁·w₁₁ + x₂·w₂₁ + b_h1','#a06848',10,false);
-  line('     = 0.9×0.500 + 0.3×0.400 + 0.10',ICOL,10,true);
-  line('     = 0.450 + 0.120 + 0.100',ICOL,10,true);
-  line('     = 0.670',HCOL,11,true);
-  line('a_h1 = σ(0.670)  =  0.662',HCOL,10.5,true);
-  y+=8; svg.appendChild(el('line',{x1:20,y1:y,x2:RW-20,y2:y,stroke:'#5a3020','stroke-width':0.5})); y+=14;
-  line('z_h2 = x₁·w₁₂ + x₂·w₂₂ + b_h2','#a06848',10,false);
-  line('     = 0.9×(−0.300) + 0.3×0.700 + (−0.20)',ICOL,10,true);
-  line('     = −0.270 + 0.210 − 0.200',ICOL,10,true);
-  line('     = −0.260',HCOL,11,true);
-  line('a_h2 = σ(−0.260)  =  0.435',HCOL,10.5,true);
-  y+=8; svg.appendChild(el('line',{x1:20,y1:y,x2:RW-20,y2:y,stroke:'#5a3020','stroke-width':0.5})); y+=10;
-  line('σ(z) = 1 / (1 + e^−z)   maps z → (0, 1)',TICK,9.5,true);
-}
-
-// ── Forward: output ──
-function drawFwdO(svg) {
-  hdr(svg,'Forward pass — output & cost');
-  let y=36;
-  const line=(s,c,sz=10.5,mono=false)=>{txt(svg,20,y,s,c,sz,mono);y+=20;};
-
-  line('z_o = a_h1·v₁  + a_h2·v₂  + b_o','#a06848',10,false);
-  line('    = 0.662×0.600 + 0.435×(−0.400) + 0.05',HCOL,10,true);
-  line('    = 0.397 − 0.174 + 0.050',HCOL,10,true);
-  line('    = 0.273',OCOL,11,true);
-  line('a_o = σ(0.273)  =  0.568',OCOL,10.5,true);
-  y+=10; svg.appendChild(el('line',{x1:20,y1:y,x2:RW-20,y2:y,stroke:'#5a3020','stroke-width':0.5})); y+=14;
-  line('C = ½ (a_o − y)²','#a06848',10,false);
-  line('  = ½ (0.568 − 1.000)²','#d0c090',10,true);
-  line('  = ½ × (−0.432)²',PCOL,10,true);
-  line('  = ½ × 0.187',PCOL,10,true);
-  line('  = 0.093',PCOL,12,true);
-  y+=8; svg.appendChild(el('line',{x1:20,y1:y,x2:RW-20,y2:y,stroke:'#5a3020','stroke-width':0.5})); y+=10;
-  line('Target was 1.0. Output is 0.568.',TICK,9.5,false);
-  line('Training must increase the output.',TICK,9.5,false);
-}
-
-// ── Output delta ──
-function drawDeltaO(svg) {
-  hdr(svg,'Computing δₒ (output delta)');
-  let y=36;
-  const line=(s,c,sz=10.5,mono=false)=>{txt(svg,20,y,s,c,sz,mono);y+=20;};
-
-  line('Error  =  a_o − y','#a06848',10);
-  line('       =  0.568 − 1.000  =  −0.432',PCOL,10.5,true);
-  y+=8; svg.appendChild(el('line',{x1:20,y1:y,x2:RW-20,y2:y,stroke:'#5a3020','stroke-width':0.5})); y+=14;
-  line("Sigmoid derivative:  σ'(z) = σ(z)·(1−σ(z))",'#a06848',10);
-  line("σ'(z_o) = 0.568 × (1 − 0.568)",'#d0c090',10,true);
-  line('        = 0.568 × 0.432  =  0.245',OCOL,10.5,true);
-  y+=8; svg.appendChild(el('line',{x1:20,y1:y,x2:RW-20,y2:y,stroke:'#5a3020','stroke-width':0.5})); y+=14;
-  line('δₒ  =  error  ×  σ\'(z_o)','#a06848',10);
-  line('    =  −0.432  ×  0.245',PCOL,10.5,true);
-  line('    =  −0.106',PCOL,13,true);
-  y+=8; svg.appendChild(el('line',{x1:20,y1:y,x2:RW-20,y2:y,stroke:'#5a3020','stroke-width':0.5})); y+=10;
-  line('Negative δₒ means: to reduce cost,',TICK,9.5);
-  line("increase z_o.  σ' scales by how",TICK,9.5);
-  line('sensitive the output is to that change.',TICK,9.5);
-}
-
-// ── Output weight gradients ──
-function drawGradsOut(svg) {
-  hdr(svg,'Gradients for output weights');
-  let y=36;
-  const line=(s,c,sz=10.5,mono=false)=>{txt(svg,20,y,s,c,sz,mono);y+=20;};
-
-  line('Rule:  ∂C/∂v  =  a_prev × δₒ','#a06848',10);
-  y+=4; svg.appendChild(el('line',{x1:20,y1:y,x2:RW-20,y2:y,stroke:'#5a3020','stroke-width':0.5})); y+=14;
-  line('∂C/∂v₁  =  a_h1 × δₒ','#a06848',10);
-  line('        =  0.662  ×  (−0.106)',HCOL,10,true);
-  line('        =  −0.070',GCOL,12,true);
-  y+=8; svg.appendChild(el('line',{x1:20,y1:y,x2:RW-20,y2:y,stroke:'#5a3020','stroke-width':0.5})); y+=14;
-  line('∂C/∂v₂  =  a_h2 × δₒ','#a06848',10);
-  line('        =  0.435  ×  (−0.106)',HCOL,10,true);
-  line('        =  −0.046',GCOL,12,true);
-  y+=8; svg.appendChild(el('line',{x1:20,y1:y,x2:RW-20,y2:y,stroke:'#5a3020','stroke-width':0.5})); y+=10;
-  line('Both gradients are negative.',TICK,9.5);
-  line('Update: v_new = v_old − η × grad',TICK,9.5);
-  line('Subtracting a negative → v increases.',TICK,9.5);
-  line('This pushes aₒ upward toward 1.0.',TICK,9.5);
-}
-
-// ── Backprop to hidden ──
-function drawBackH(svg) {
-  hdr(svg,'Back-propagating the error');
-  let y=36;
-  const line=(s,c,sz=10.5,mono=false)=>{txt(svg,20,y,s,c,sz,mono);y+=20;};
-
-  line('Rule: δ_h = (w_out × δₒ) × σ\'(z_h)','#a06848',10);
-  y+=4; svg.appendChild(el('line',{x1:20,y1:y,x2:RW-20,y2:y,stroke:'#5a3020','stroke-width':0.5})); y+=14;
-  line("δ_h1 = (v₁ × δₒ) × σ'(z_h1)",'#a06848',10);
-  line('     = (0.600 × −0.106) × (0.662×0.338)',HCOL,9.5,true);
-  line('     = −0.064  ×  0.224',HCOL,10,true);
-  line('     = −0.014',PCOL,12,true);
-  y+=8; svg.appendChild(el('line',{x1:20,y1:y,x2:RW-20,y2:y,stroke:'#5a3020','stroke-width':0.5})); y+=14;
-  line("δ_h2 = (v₂ × δₒ) × σ'(z_h2)",'#a06848',10);
-  line('     = (−0.400 × −0.106) × (0.435×0.565)',HCOL,9.5,true);
-  line('     =  0.042  ×  0.246',HCOL,10,true);
-  line('     = +0.010',PCOL,12,true);
-  y+=8; svg.appendChild(el('line',{x1:20,y1:y,x2:RW-20,y2:y,stroke:'#5a3020','stroke-width':0.5})); y+=10;
-  line('v₂ is negative: two negatives cancel,',TICK,9.5);
-  line('so δ_h2 is positive.',TICK,9.5);
-}
-
-// ── Input weight gradients ──
-function drawGradsIn(svg) {
-  hdr(svg,'Gradients for input weights');
-  let y=36;
-  const line=(s,c,sz=10.5,mono=false)=>{txt(svg,20,y,s,c,sz,mono);y+=20;};
-
-  line('Rule:  ∂C/∂w  =  x × δ_h','#a06848',10);
-  y+=4; svg.appendChild(el('line',{x1:20,y1:y,x2:RW-20,y2:y,stroke:'#5a3020','stroke-width':0.5})); y+=14;
-  line('∂C/∂w₁₁ = x₁ × δ_h1 = 0.9 × −0.014 = −0.013',GCOL,9.5,true);
-  line('∂C/∂w₂₁ = x₂ × δ_h1 = 0.3 × −0.014 = −0.004',GCOL,9.5,true);
-  y+=8; svg.appendChild(el('line',{x1:20,y1:y,x2:RW-20,y2:y,stroke:'#5a3020','stroke-width':0.5})); y+=14;
-  line('∂C/∂w₁₂ = x₁ × δ_h2 = 0.9 × +0.010 = +0.009',GCOL,9.5,true);
-  line('∂C/∂w₂₂ = x₂ × δ_h2 = 0.3 × +0.010 = +0.003',GCOL,9.5,true);
-  y+=10; svg.appendChild(el('line',{x1:20,y1:y,x2:RW-20,y2:y,stroke:'#5a3020','stroke-width':0.5})); y+=14;
-  line('These gradients are ≈ 10× smaller than',TICK,9.5);
-  line('the output gradients. In a 30-layer',TICK,9.5);
-  line('network, the signal shrinks further at',TICK,9.5);
-  line('each step — the vanishing gradient',TICK,9.5);
-  line('problem that ReLU was designed to fix.',TICK,9.5);
-}
-
-// ── Weight updates ──
-function drawUpdates(svg) {
-  hdr(svg,'Weight update:  w ← w − η × ∂C/∂w');
-  const y0=32;
-  const cols=['Weight','Old','Grad','New','+Δ'];
-  const cx=[20,90,155,222,298];
-  cols.forEach((c,i)=>txt(svg,cx[i],y0+14,c,TICK,9,'',true));
-  svg.appendChild(el('line',{x1:14,y1:y0+20,x2:RW-14,y2:y0+20,stroke:'#5a3020','stroke-width':0.5}));
-
-  const rows=[
-    ['v₁',  V1.toFixed(3),  GV1.toFixed(3),  V1N.toFixed(3),  '+0.035', HCOL],
-    ['v₂', V2.toFixed(3),   GV2.toFixed(3),  V2N.toFixed(3),  '+0.023', HCOL],
-    ['w₁₁', W11.toFixed(3), GW11.toFixed(3), W11N.toFixed(3), '+0.006', ICOL],
-    ['w₂₁', W21.toFixed(3), GW21.toFixed(3), W21N.toFixed(3), '+0.002', ICOL],
-    ['w₁₂', W12.toFixed(3), GW12.toFixed(3), W12N.toFixed(3), '−0.005', ICOL],
-    ['w₂₂', W22.toFixed(3), GW22.toFixed(3), W22N.toFixed(3), '−0.002', ICOL],
-  ];
-  rows.forEach(([name,old,grad,nw,delta,ncol],i)=>{
-    const y=y0+38+i*32;
-    txt(svg,cx[0],y,name,ncol,10,true);
-    txt(svg,cx[1],y,old,'#c0a080',9.5,true);
-    txt(svg,cx[2],y,grad,GCOL,9.5,true);
-    txt(svg,cx[3],y,nw,UCOL,10,true,true);
-    txt(svg,cx[4],y,delta,GOLD,9,true);
-  });
-
-  svg.appendChild(el('line',{x1:14,y1:y0+38+6*32-8,x2:RW-14,y2:y0+38+6*32-8,stroke:'#5a3020','stroke-width':0.5}));
-  txt(svg,20,y0+38+6*32+8,'Output weights (v) move most: they',TICK,9.5);
-  txt(svg,20,y0+38+6*32+24,'receive the strongest gradient signal.',TICK,9.5);
-}
-
-// ── Result ──
-function drawResult(svg) {
-  hdr(svg,'After one update step');
-
-  const mid=RH/2-20;
-  svg.appendChild(el('line',{x1:14,y1:mid-80,x2:RW-14,y2:mid-80,stroke:'#5a3020','stroke-width':0.5}));
-
-  // Before column
-  txt(svg,80,mid-60,'Before',TICK,10,false,true);
-  txt(svg,80,mid-40,`aₒ = ${AO}`,OCOL,13,true,true);
-  txt(svg,80,mid-18,`C  = ${COST}`,'#d0c090',12,true,true);
-
-  // Arrow
-  svg.appendChild(el('text',{x:RW/2,y:mid-28,'text-anchor':'middle',fill:GOLD,'font-size':20},'→'));
-
-  // After column
-  txt(svg,RW-60,mid-60,'After',TICK,10,false,true);
-  txt(svg,RW-60,mid-40,`aₒ = ${AON}`,GOLD,13,true,true);
-  txt(svg,RW-60,mid-18,`C  = ${COSTN}`,GOLD,12,true,true);
-
-  svg.appendChild(el('line',{x1:14,y1:mid+4,x2:RW-14,y2:mid+4,stroke:'#5a3020','stroke-width':0.5}));
-
-  const improvement=((COST-COSTN)/COST*100).toFixed(1);
-  txt(svg,RW/2,mid+24,`Cost reduced by ${improvement}%`,OCOL,11,false,true);
-
-  svg.appendChild(el('line',{x1:14,y1:mid+36,x2:RW-14,y2:mid+36,stroke:'#5a3020','stroke-width':0.5}));
-
-  txt(svg,20,mid+54,'One step across one training example.',TICK,9.5);
-  txt(svg,20,mid+72,'Real training: 60,000 examples ×',TICK,9.5);
-  txt(svg,20,mid+90,'30 epochs = 1,800,000 updates.',TICK,9.5);
-  txt(svg,20,mid+112,'Each step is tiny. Cumulatively,',TICK,9.5);
-  txt(svg,20,mid+130,'they find weights that generalize.',TICK,9.5);
-}
-
-// ─── Navigation ───────────────────────────────────────────────────────────────
-let cur=0;
 function updateNav() {
-  const dotsEl=document.getElementById('dots');
-  dotsEl.innerHTML='';
-  steps.forEach((_,i)=>{
-    const d=document.createElement('span');
-    d.className='dot'+(i===cur?' active':'');
-    d.addEventListener('click',()=>{cur=i;render();});
+  const dotsEl = document.getElementById('dots');
+  dotsEl.innerHTML = '';
+  steps.forEach((_, i) => {
+    const d = document.createElement('span');
+    d.className = 'dot' + (i === cur ? ' active' : '');
+    d.addEventListener('click', () => { cur = i; render(); });
     dotsEl.appendChild(d);
   });
-  document.getElementById('prev').disabled=cur===0;
-  document.getElementById('next').disabled=cur===steps.length-1;
-  document.getElementById('step-counter').textContent=`${cur+1} / ${steps.length}`;
+  document.getElementById('prev').disabled = cur === 0;
+  document.getElementById('next').disabled = cur === steps.length - 1;
+  document.getElementById('step-counter').textContent = `${cur + 1} / ${steps.length}`;
 }
+
 function render() {
-  const s=steps[cur];
-  document.getElementById('step-title').textContent=s.title;
-  document.getElementById('explanation').innerHTML=s.html;
+  document.getElementById('step-title').textContent = steps[cur].title;
+  document.getElementById('explanation').innerHTML = steps[cur].html;
   renderNet(cur);
   renderRight(cur);
   updateNav();
 }
-document.getElementById('prev').addEventListener('click',()=>{if(cur>0){cur--;render();}});
-document.getElementById('next').addEventListener('click',()=>{if(cur<steps.length-1){cur++;render();}});
-document.addEventListener('keydown',e=>{
-  if(e.key==='ArrowLeft'&&cur>0){cur--;render();}
-  if(e.key==='ArrowRight'&&cur<steps.length-1){cur++;render();}
+
+document.getElementById('prev').addEventListener('click', () => { if (cur > 0) { cur--; render(); } });
+document.getElementById('next').addEventListener('click', () => { if (cur < steps.length - 1) { cur++; render(); } });
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft'  && cur > 0)                 { cur--; render(); }
+  if (e.key === 'ArrowRight' && cur < steps.length - 1)  { cur++; render(); }
 });
+
 render();
 </script>
 </body>
