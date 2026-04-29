@@ -640,9 +640,9 @@ function drawSigmoidVsReLU(svg) {
   // Legend
   const ly=MT+12;
   svg.appendChild(el('line',{x1:ML+4,y1:ly,x2:ML+24,y2:ly,stroke:HCOL,'stroke-width':2.5}));
-  svg.appendChild(el('text',{x:ML+28,y:ly+4,fill:HCOL,'font-size':10},'σ(z) — sigmoid (Chapter 1)'}));
+  svg.appendChild(el('text',{x:ML+28,y:ly+4,fill:HCOL,'font-size':10},'σ(z) — sigmoid (Chapter 1)'));
   svg.appendChild(el('line',{x1:ML+4,y1:ly+18,x2:ML+24,y2:ly+18,stroke:OCOL,'stroke-width':2.5}));
-  svg.appendChild(el('text',{x:ML+28,y:ly+22,fill:OCOL,'font-size':10},'max(0, z) — ReLU (modern)'}));
+  svg.appendChild(el('text',{x:ML+28,y:ly+22,fill:OCOL,'font-size':10},'max(0, z) — ReLU (modern)'));
 
   // Annotations
   svg.appendChild(el('text',{x:px(3.2),y:py(0.95)-10,'text-anchor':'middle',
