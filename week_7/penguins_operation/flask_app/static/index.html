@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Penguin Classifier</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "Segoe UI", sans-serif; background: #f0f4f8; color: #1a2e3a; }
+
+header {
+  background: linear-gradient(135deg, #1a4a6b, #2e7ab8);
+  color: #fff; padding: 18px 32px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+header h1 { font-size: 1.4rem; font-weight: 700; }
+#model-badge {
+  background: rgba(255,255,255,0.2); border-radius: 20px;
+  padding: 5px 14px; font-size: 0.85rem; font-weight: 600;
+  cursor: pointer; transition: background 0.15s;
+}
+#model-badge:hover { background: rgba(255,255,255,0.3); }
+
+.layout { display: flex; gap: 20px; padding: 24px; max-width: 1100px; margin: 0 auto; }
+
+/* ── left: form ── */
+.card { background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+#form-card { flex: 0 0 340px; padding: 22px; }
+#form-card h2 { font-size: 1rem; font-weight: 700; color: #1a4a6b; margin-bottom: 16px; }
+
+.field { margin-bottom: 14px; }
+.field label { display: block; font-size: 0.82rem; font-weight: 600; color: #555; margin-bottom: 4px; }
+.field input, .field select {
+  width: 100%; padding: 8px 10px; border: 1.5px solid #c8d8e8;
+  border-radius: 6px; font-size: 0.93rem; background: #f8fbff;
+  transition: border-color 0.15s;
+}
+.field input:focus, .field select:focus {
+  outline: none; border-color: #2e7ab8;
+}
+.field .hint { font-size: 0.75rem; color: #888; margin-top: 2px; }
+
+#predict-btn {
+  width: 100%; padding: 11px; background: #2e7ab8; color: #fff;
+  border: none; border-radius: 8px; font-size: 1rem; font-weight: 700;
+  cursor: pointer; transition: background 0.15s, transform 0.1s; margin-top: 6px;
+}
+#predict-btn:hover { background: #1a5a90; transform: translateY(-1px); }
+#predict-btn:active { transform: translateY(0); }
+
+/* ── right: results ── */
+#right { flex: 1; display: flex; flex-direction: column; gap: 20px; }
+
+#result-card { padding: 22px; }
+#result-card h2 { font-size: 1rem; font-weight: 700; color: #1a4a6b; margin-bottom: 14px; }
+
+#result-placeholder { color: #aaa; font-size: 0.9rem; font-style: italic; }
+
+#result-content { display: none; }
+.species-name {
+  font-size: 2rem; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 4px;
+}
+.species-name.Adelie    { color: #e07820; }
+.species-name.Chinstrap { color: #a030c0; }
+.species-name.Gentoo    { color: #1a8a3a; }
+
+.confidence { font-size: 0.9rem; color: #555; margin-bottom: 16px; }
+
+.prob-bars { margin-bottom: 14px; }
+.prob-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.prob-label { width: 80px; font-size: 0.82rem; font-weight: 600; color: #444; }
+.prob-track { flex: 1; height: 18px; background: #eef; border-radius: 4px; overflow: hidden; }
+.prob-fill { height: 100%; border-radius: 4px; transition: width 0.4s; }
+.prob-fill.Adelie    { background: #e07820; }
+.prob-fill.Chinstrap { background: #a030c0; }
+.prob-fill.Gentoo    { background: #1a8a3a; }
+.prob-val { width: 38px; text-align: right; font-size: 0.82rem; color: #555; }
+
+.model-note {
+  font-size: 0.8rem; color: #888; border-top: 1px solid #eee;
+  padding-top: 10px; margin-top: 4px;
+}
+
+/* ── comparison table ── */
+#compare-card { padding: 22px; }
+#compare-card h2 {
+  font-size: 1rem; font-weight: 700; color: #1a4a6b;
+  margin-bottom: 4px;
+}
+#compare-card .subtitle {
+  font-size: 0.8rem; color: #888; margin-bottom: 14px;
+}
+#compare-table {
+  width: 100%; border-collapse: collapse; font-size: 0.82rem;
+}
+#compare-table th {
+  background: #1a4a6b; color: #fff;
+  padding: 6px 10px; text-align: left;
+}
+#compare-table td { padding: 6px 10px; border-bottom: 1px solid #e8f0f8; }
+#compare-table tr:nth-child(even) td { background: #f4f8fc; }
+.pill {
+  display: inline-block; padding: 1px 9px; border-radius: 12px;
+  font-size: 0.78rem; font-weight: 700; color: #fff;
+}
+.pill.Adelie    { background: #e07820; }
+.pill.Chinstrap { background: #a030c0; }
+.pill.Gentoo    { background: #1a8a3a; }
+
+#clear-btn {
+  margin-top: 10px; padding: 5px 14px;
+  background: #eee; border: none; border-radius: 6px;
+  font-size: 0.8rem; cursor: pointer; color: #555;
+}
+#clear-btn:hover { background: #ddd; }
+
+/* ── health modal ── */
+#health-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.4); z-index: 999;
+  justify-content: center; align-items: center;
+}
+#health-overlay.open { display: flex; }
+#health-box {
+  background: #fff; border-radius: 12px; padding: 28px 32px;
+  width: 380px; box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+#health-box h3 { font-size: 1rem; font-weight: 700; margin-bottom: 14px; color: #1a4a6b; }
+.health-row { display: flex; justify-content: space-between;
+  font-size: 0.88rem; padding: 5px 0; border-bottom: 1px solid #eee; }
+.health-row:last-of-type { border-bottom: none; }
+.health-key { color: #666; }
+.health-val { font-weight: 600; color: #1a2e3a; }
+#health-close {
+  margin-top: 16px; width: 100%; padding: 9px;
+  background: #1a4a6b; color: #fff; border: none;
+  border-radius: 6px; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+}
+
+/* ── error toast ── */
+#toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: #c03030; color: #fff; border-radius: 8px;
+  padding: 10px 20px; font-size: 0.88rem; font-weight: 600;
+  display: none; z-index: 9999;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🐧 Penguin Species Classifier</h1>
+  <div id="model-badge" onclick="showHealth()" title="Click to see model details">
+    Loading model info…
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- ── Form ── -->
+  <div class="card" id="form-card">
+    <h2>Penguin Measurements</h2>
+
+    <div class="field">
+      <label>Bill length (mm)</label>
+      <input type="number" id="bill_length_mm" value="45.0" min="30" max="65" step="0.1">
+      <div class="hint">Typical range: 32–60 mm</div>
+    </div>
+    <div class="field">
+      <label>Bill depth (mm)</label>
+      <input type="number" id="bill_depth_mm" value="15.0" min="12" max="22" step="0.1">
+      <div class="hint">Typical range: 13–22 mm</div>
+    </div>
+    <div class="field">
+      <label>Flipper length (mm)</label>
+      <input type="number" id="flipper_length_mm" value="210" min="170" max="235" step="1">
+      <div class="hint">Typical range: 172–231 mm</div>
+    </div>
+    <div class="field">
+      <label>Body mass (g)</label>
+      <input type="number" id="body_mass_g" value="4500" min="2500" max="6500" step="50">
+      <div class="hint">Typical range: 2700–6300 g</div>
+    </div>
+    <div class="field">
+      <label>Island</label>
+      <select id="island">
+        <option value="Biscoe">Biscoe</option>
+        <option value="Dream">Dream</option>
+        <option value="Torgersen">Torgersen</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Sex</label>
+      <select id="sex">
+        <option value="male">Male</option>
+        <option value="female">Female</option>
+      </select>
+    </div>
+
+    <button id="predict-btn" onclick="predict()">Predict Species</button>
+
+    <div style="margin-top:18px; border-top:1px solid #eee; padding-top:14px;">
+      <div style="font-size:0.78rem; font-weight:700; color:#888; margin-bottom:8px; text-transform:uppercase; letter-spacing:.05em;">Try a known example</div>
+      <div style="display:flex; flex-direction:column; gap:6px;">
+        <button class="example-btn" onclick="fillExample('adelie')">Adelie (Torgersen, male)</button>
+        <button class="example-btn" onclick="fillExample('chinstrap')">Chinstrap (Dream, female)</button>
+        <button class="example-btn" onclick="fillExample('gentoo')">Gentoo (Biscoe, male)</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="right">
+
+    <!-- ── Result ── -->
+    <div class="card" id="result-card">
+      <h2>Prediction</h2>
+      <div id="result-placeholder">Fill in the measurements and click Predict.</div>
+      <div id="result-content">
+        <div class="species-name" id="species-name"></div>
+        <div class="confidence" id="confidence-text"></div>
+        <div class="prob-bars" id="prob-bars"></div>
+        <div class="model-note" id="model-note"></div>
+      </div>
+    </div>
+
+    <!-- ── Comparison table ── -->
+    <div class="card" id="compare-card">
+      <h2>Prediction Log</h2>
+      <div class="subtitle">Run the flow at different depths and compare how predictions change for the same inputs.</div>
+      <table id="compare-table">
+        <thead>
+          <tr>
+            <th>Bill L</th><th>Bill D</th><th>Flipper</th><th>Mass</th>
+            <th>Island</th><th>Sex</th><th>Species</th><th>Conf.</th><th>Depth</th>
+          </tr>
+        </thead>
+        <tbody id="compare-body"></tbody>
+      </table>
+      <button id="clear-btn" onclick="clearLog()">Clear log</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── Health modal ── -->
+<div id="health-overlay" onclick="closeHealth(event)">
+  <div id="health-box">
+    <h3>Deployed Model</h3>
+    <div id="health-rows"></div>
+    <button id="health-close" onclick="closeHealth()">Close</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<style>
+.example-btn {
+  padding: 6px 12px; background: #eef4ff; border: 1.5px solid #b0c8e8;
+  border-radius: 6px; font-size: 0.8rem; cursor: pointer; text-align: left;
+  transition: background 0.15s;
+}
+.example-btn:hover { background: #d8eaff; }
+</style>
+
+<script>
+const API = "http://localhost:5051";
+
+const EXAMPLES = {
+  adelie:    { bill_length_mm:39.1, bill_depth_mm:18.7, flipper_length_mm:181, body_mass_g:3750, island:"Torgersen", sex:"male"   },
+  chinstrap: { bill_length_mm:46.5, bill_depth_mm:17.9, flipper_length_mm:192, body_mass_g:3500, island:"Dream",    sex:"female" },
+  gentoo:    { bill_length_mm:46.1, bill_depth_mm:13.2, flipper_length_mm:211, body_mass_g:4500, island:"Biscoe",   sex:"female" },
+};
+
+function fillExample(key) {
+  const e = EXAMPLES[key];
+  document.getElementById("bill_length_mm").value    = e.bill_length_mm;
+  document.getElementById("bill_depth_mm").value     = e.bill_depth_mm;
+  document.getElementById("flipper_length_mm").value = e.flipper_length_mm;
+  document.getElementById("body_mass_g").value       = e.body_mass_g;
+  document.getElementById("island").value            = e.island;
+  document.getElementById("sex").value               = e.sex;
+}
+
+async function predict() {
+  const body = {
+    bill_length_mm:    parseFloat(document.getElementById("bill_length_mm").value),
+    bill_depth_mm:     parseFloat(document.getElementById("bill_depth_mm").value),
+    flipper_length_mm: parseFloat(document.getElementById("flipper_length_mm").value),
+    body_mass_g:       parseFloat(document.getElementById("body_mass_g").value),
+    island: document.getElementById("island").value,
+    sex:    document.getElementById("sex").value,
+  };
+
+  let res;
+  try {
+    res = await fetch(`${API}/predict`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    showToast("Cannot reach server — is Flask running on port 5051?");
+    return;
+  }
+
+  const data = await res.json();
+  if (!res.ok) { showToast(data.error || "Prediction failed"); return; }
+
+  // Show result
+  document.getElementById("result-placeholder").style.display = "none";
+  document.getElementById("result-content").style.display = "block";
+
+  const nameEl = document.getElementById("species-name");
+  nameEl.textContent = data.species;
+  nameEl.className = "species-name " + data.species;
+
+  document.getElementById("confidence-text").textContent =
+    `${(data.confidence*100).toFixed(1)}% confidence`;
+
+  const bars = document.getElementById("prob-bars");
+  bars.innerHTML = "";
+  for (const [sp, p] of Object.entries(data.probabilities)) {
+    bars.insertAdjacentHTML("beforeend", `
+      <div class="prob-row">
+        <div class="prob-label">${sp}</div>
+        <div class="prob-track">
+          <div class="prob-fill ${sp}" style="width:${(p*100).toFixed(1)}%"></div>
+        </div>
+        <div class="prob-val">${(p*100).toFixed(0)}%</div>
+      </div>`);
+  }
+
+  document.getElementById("model-note").textContent =
+    `Model: depth=${data.model_depth}  accuracy=${(data.model_accuracy*100).toFixed(1)}%  trained ${data.trained_at.slice(0,16)} UTC`;
+
+  // Add to log
+  const tbody = document.getElementById("compare-body");
+  const row = document.createElement("tr");
+  row.innerHTML = `
+    <td>${body.bill_length_mm}</td>
+    <td>${body.bill_depth_mm}</td>
+    <td>${body.flipper_length_mm}</td>
+    <td>${body.body_mass_g}</td>
+    <td>${body.island}</td>
+    <td>${body.sex}</td>
+    <td><span class="pill ${data.species}">${data.species}</span></td>
+    <td>${(data.confidence*100).toFixed(0)}%</td>
+    <td>${data.model_depth}</td>`;
+  tbody.appendChild(row);
+}
+
+function clearLog() {
+  document.getElementById("compare-body").innerHTML = "";
+}
+
+// ── Health modal ──────────────────────────────────────────────────────────────
+async function refreshBadge() {
+  try {
+    const res = await fetch(`${API}/health`);
+    const d = await res.json();
+    const badge = document.getElementById("model-badge");
+    if (d.status === "ok") {
+      badge.textContent = `depth=${d.max_depth}  acc=${(d.accuracy*100).toFixed(1)}%  ▾`;
+    } else {
+      badge.textContent = "No model deployed ▾";
+    }
+  } catch {
+    document.getElementById("model-badge").textContent = "Server offline ▾";
+  }
+}
+
+async function showHealth() {
+  const overlay = document.getElementById("health-overlay");
+  overlay.classList.add("open");
+  const rows = document.getElementById("health-rows");
+  rows.innerHTML = "<div style='color:#888;font-size:.88rem'>Loading…</div>";
+  try {
+    const res = await fetch(`${API}/health`);
+    const d = await res.json();
+    if (d.status === "no_model") {
+      rows.innerHTML = `<div style='color:#c03030;font-size:.88rem'>${d.message}</div>`;
+      return;
+    }
+    const fields = [
+      ["Status",      d.status],
+      ["Max depth",   d.max_depth],
+      ["Accuracy",    (d.accuracy*100).toFixed(1) + "%"],
+      ["Train rows",  d.n_train],
+      ["Test rows",   d.n_test],
+      ["Rows dropped", d.n_dropped],
+      ["Trained at",  d.trained_at.slice(0,19).replace("T"," ") + " UTC"],
+    ];
+    rows.innerHTML = fields.map(([k,v]) =>
+      `<div class="health-row"><span class="health-key">${k}</span><span class="health-val">${v}</span></div>`
+    ).join("");
+  } catch {
+    rows.innerHTML = "<div style='color:#c03030'>Cannot reach server.</div>";
+  }
+}
+
+function closeHealth(e) {
+  if (!e || e.target === document.getElementById("health-overlay") ||
+      e.target.id === "health-close") {
+    document.getElementById("health-overlay").classList.remove("open");
+  }
+}
+
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.style.display = "block";
+  setTimeout(() => { t.style.display = "none"; }, 4000);
+}
+
+// Init
+refreshBadge();
+setInterval(refreshBadge, 10000);
+</script>
+</body>
+</html>

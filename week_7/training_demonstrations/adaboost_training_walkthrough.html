@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How AdaBoost Learns — Step by Step</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, sans-serif;
+  background: #f4f8fb; color: #1a2e3a; min-height: 100vh;
+}
+header {
+  background: linear-gradient(135deg, #6b3a8a, #3d1a5e);
+  color: white; padding: 18px 36px;
+  display: flex; justify-content: space-between; align-items: center;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+}
+header h1 { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.3px; }
+#step-counter {
+  background: rgba(255,255,255,0.18); padding: 5px 16px;
+  border-radius: 20px; font-size: 0.88rem; font-weight: 600;
+}
+.content { max-width: 1120px; margin: 0 auto; padding: 20px 24px 80px; }
+.main-row { display: flex; gap: 20px; margin-bottom: 20px; align-items: stretch; }
+.panel {
+  background: #ffffff; border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.1); overflow: hidden;
+}
+.panel-header {
+  background: #e8daf5; border-bottom: 1px solid #c8b0e0;
+  padding: 10px 18px; font-size: 0.75rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em; color: #6b3a8a;
+}
+#plot-panel { flex: 0 0 420px; }
+#plot-panel svg { display: block; }
+#explain-panel { flex: 1; display: flex; flex-direction: column; }
+#explain-content { padding: 18px 22px; flex: 1; }
+#step-title { font-size: 1.18rem; font-weight: 700; color: #5a2a7a; margin-bottom: 13px; line-height: 1.3; }
+#step-body { font-size: 0.93rem; line-height: 1.75; color: #2a4a5a; }
+#step-body p { margin-bottom: 11px; }
+#step-body ul, #step-body ol { margin: 6px 0 11px 22px; }
+#step-body li { margin-bottom: 3px; }
+.math-block {
+  background: #f0e8fa; border-left: 3px solid #6b3a8a;
+  padding: 11px 15px; margin: 11px 0;
+  font-family: 'Menlo', 'Courier New', monospace;
+  font-size: 0.85rem; line-height: 1.85; border-radius: 0 6px 6px 0; color: #4a1a6a;
+}
+.good { color: #1a7840; font-weight: 700; }
+.highlight-val { color: #6b3a8a; font-weight: 700; }
+.callout {
+  background: #ede0fa; border-radius: 8px; padding: 9px 14px;
+  margin-top: 10px; font-size: 0.88rem; color: #5a2a7a; line-height: 1.6;
+}
+.tag-b { display: inline-block; background: #3b82f6; color: white; padding: 1px 7px; border-radius: 4px; font-size: 0.8rem; font-weight: 700; }
+.tag-r { display: inline-block; background: #e05252; color: white; padding: 1px 7px; border-radius: 4px; font-size: 0.8rem; font-weight: 700; }
+#ensemble-panel { margin-bottom: 20px; }
+#ensemble-panel svg { display: block; width: 100%; }
+.nav-bar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  display: flex; justify-content: center; align-items: center; gap: 20px;
+  padding: 12px 0 16px; background: #f4f8fb;
+  border-top: 1px solid #c8b0e0; z-index: 100;
+}
+.nav-bar button {
+  background: #6b3a8a; color: white; border: none;
+  padding: 11px 30px; font-size: 0.97rem; font-weight: 600;
+  border-radius: 8px; cursor: pointer; transition: background 0.15s, transform 0.1s;
+}
+.nav-bar button:hover { background: #562d72; transform: translateY(-1px); }
+.nav-bar button:disabled { background: #c8b0e0; cursor: default; transform: none; }
+.dots { display: flex; gap: 7px; align-items: center; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: #d0b8e8; transition: background 0.2s; }
+.dot.active { background: #6b3a8a; transform: scale(1.3); }
+.dot.done   { background: #4aaa7a; }
+</style>
+</head>
+<body>
+<header>
+  <h1>How AdaBoost Learns — Step by Step</h1>
+  <div id="step-counter">Step 1 of 9</div>
+</header>
+
+<div class="content">
+  <div class="main-row">
+    <div class="panel" id="plot-panel">
+      <div class="panel-header">Feature Space (point size = current weight)</div>
+      <svg id="scatter" width="420" height="415"></svg>
+    </div>
+    <div class="panel" id="explain-panel">
+      <div class="panel-header">What the Algorithm Is Doing</div>
+      <div id="explain-content">
+        <div id="step-title"></div>
+        <div id="step-body"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="ensemble-panel">
+    <div class="panel-header">Ensemble So Far</div>
+    <svg id="ensemble" viewBox="0 0 960 120" height="120"></svg>
+  </div>
+
+  <div class="nav-bar">
+    <button id="prev-btn" onclick="changeStep(-1)" disabled>← Previous</button>
+    <div class="dots" id="dots"></div>
+    <button id="next-btn" onclick="changeStep(1)">Next →</button>
+  </div>
+</div>
+
+<script>
+// ─── Dataset ─────────────────────────────────────────────────────────────────
+// 8 points: 4 blue, 4 red. Point (5,7) is blue but sits in "red territory" —
+// it is the deliberate outlier that drives AdaBoost's boosting behavior.
+const PTS = [
+  {id:1, x1:1, x2:6, cls:'blue'},
+  {id:2, x1:2, x2:7, cls:'blue'},
+  {id:3, x1:1, x2:4, cls:'blue'},
+  {id:4, x1:5, x2:7, cls:'blue'},  // outlier
+  {id:5, x1:5, x2:2, cls:'red'},
+  {id:6, x1:6, x2:3, cls:'red'},
+  {id:7, x1:7, x2:4, cls:'red'},
+  {id:8, x1:6, x2:5, cls:'red'},
+];
+
+// ─── Coordinate system ───────────────────────────────────────────────────────
+const P = { L:54, R:394, T:14, B:374 };
+const xScale = (P.R - P.L) / 8;
+const yScale = (P.B - P.T) / 9;
+function toSVG(x1, x2) { return { x: P.L + x1 * xScale, y: P.B - x2 * yScale }; }
+
+// Key split line positions
+const SX1 = P.L + 4 * xScale;  // x1=4 (Round 1 boundary)
+const SX2 = P.B - 6 * yScale;  // x2=6 (Round 2 boundary)
+
+// ─── Weight states ───────────────────────────────────────────────────────────
+// After Round 1: (5,7) gets ~50% weight, others ~7% each
+// After Round 2: (6,3) gets ~50%, (5,7) ~13%, others ~6%
+const WEIGHTS = {
+  uniform:  [0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125],
+  afterR1:  [0.071, 0.071, 0.071, 0.501, 0.071, 0.071, 0.071, 0.071],
+  afterR2:  [0.038, 0.038, 0.501, 0.270, 0.038, 0.038, 0.038, 0.038],
+};
+
+// ─── Steps ───────────────────────────────────────────────────────────────────
+const STEPS = [
+  {
+    title: 'Step 1 — The Idea Behind AdaBoost',
+    body: `<p><strong>AdaBoost</strong> (Adaptive Boosting) builds a strong classifier from an ensemble of <em>weak learners</em> — classifiers barely better than chance.</p>
+      <p>The key insight: each new weak learner focuses on the mistakes of the ones before it. Training examples that were <em>misclassified</em> get higher weight, so the next learner pays more attention to them.</p>
+      <ul>
+        <li>Weak learner: a <strong>decision stump</strong> — a tree with only one split</li>
+        <li>Each stump gets a vote proportional to how accurate it was</li>
+        <li>Final prediction = weighted vote of all stumps</li>
+      </ul>
+      <div class="callout">We have 8 training examples. The outlier — the <span class="tag-b">Blue</span> point at (5, 7) — sits in what looks like red territory. Watch how AdaBoost's weight updates force later stumps to handle it.</div>`,
+    weights: 'uniform', stumpLine: null, ensemble: [],
+  },
+  {
+    title: 'Step 2 — Uniform Initial Weights',
+    body: `<p>Every training example starts with equal weight:</p>
+      <div class="math-block">w<sub>i</sub> = 1/N = 1/8 = 0.125</div>
+      <p>The <strong>size</strong> of each point in the plot reflects its weight — all equal right now.</p>
+      <p>In each round we will:</p>
+      <ol>
+        <li>Find the stump with the lowest <em>weighted</em> error</li>
+        <li>Compute how much that stump should vote (its α)</li>
+        <li>Increase weights on points the stump got wrong</li>
+        <li>Normalise so weights sum to 1</li>
+      </ol>
+      <div class="callout">Weighted error counts each misclassification by its current weight, not just by count. A heavy point being wrong is a much bigger deal than a light point being wrong.</div>`,
+    weights: 'uniform', stumpLine: null, ensemble: [],
+  },
+  {
+    title: 'Step 3 — Round 1: Best Stump is x₁ < 4',
+    body: `<p>With uniform weights, the algorithm tries every possible single-feature threshold and picks the one that minimises weighted error.</p>
+      <p>The winner: <strong>x₁ &lt; 4 → predict Blue; x₁ ≥ 4 → predict Red</strong></p>
+      <div class="math-block">
+        Correctly classified (7 pts): w = 0.125 each<br>
+        Misclassified: point (5, 7) — Blue, but x₁ ≥ 4 → predicted Red<br>
+        <br>
+        Weighted error: ε₁ = 0.125 × 1 = <span class="highlight-val">0.125</span>
+      </div>
+      <div class="callout">A perfectly random classifier would have ε = 0.5. Any ε &lt; 0.5 is a "weak learner" AdaBoost can use. This stump is much better than random — it only misses the one outlier.</div>`,
+    weights: 'uniform', stumpLine: 'x1', ensemble: [],
+  },
+  {
+    title: 'Step 4 — Round 1: Compute the Stump\'s Vote Weight (α)',
+    body: `<p>The stump's vote in the final ensemble is proportional to how accurate it was. Better stumps get louder votes.</p>
+      <div class="math-block">
+        α = ½ · ln( (1 − ε) / ε )<br>
+        α₁ = ½ · ln( (1 − 0.125) / 0.125 )<br>
+        &nbsp;&nbsp;&nbsp;= ½ · ln(7)<br>
+        &nbsp;&nbsp;&nbsp;= ½ · 1.946<br>
+        &nbsp;&nbsp;&nbsp;= <span class="highlight-val">0.97</span>
+      </div>
+      <ul>
+        <li>If ε → 0 (perfect): α → ∞ (overwhelmingly loud vote)</li>
+        <li>If ε = 0.5 (random): α = 0 (no vote at all)</li>
+        <li>If ε → 1 (always wrong): α → −∞ (vote gets flipped)</li>
+      </ul>
+      <div class="callout">α = 0.97 is a strong vote. This stump was right 7 out of 8 times, so it earns significant influence in the final decision.</div>`,
+    weights: 'uniform', stumpLine: 'x1', ensemble: [],
+  },
+  {
+    title: 'Step 5 — Round 1: Update Weights',
+    body: `<p>Now we shift weight away from correctly-classified points and toward the one the stump missed.</p>
+      <div class="math-block">
+        Correctly classified:&nbsp; w<sub>new</sub> = w · e<sup>−α₁</sup> = 0.125 · e<sup>−0.97</sup> ≈ 0.047<br>
+        Misclassified (5, 7): &nbsp;&nbsp; w<sub>new</sub> = w · e<sup>+α₁</sup> = 0.125 · e<sup>+0.97</sup> ≈ 0.331<br>
+        <br>
+        After normalising (÷ total):<br>
+        &nbsp; Point (5, 7): <span class="highlight-val">≈ 50%</span> of all weight<br>
+        &nbsp; Each other point: <span class="highlight-val">≈ 7%</span>
+      </div>
+      <p>Watch the plot — the outlier's circle grows dramatically. Round 2 must find a stump that classifies <em>it</em> correctly.</p>
+      <div class="callout">This is AdaBoost's core mechanism: misclassified examples become "harder" problems that demand attention in the next round.</div>`,
+    weights: 'afterR1', stumpLine: 'x1', ensemble: [{label:'x₁ < 4 → Blue', alpha:'0.97', color:'#3b82f6'}],
+  },
+  {
+    title: 'Step 6 — Round 2: New Stump Targets the Heavy Outlier',
+    body: `<p>With 50% of the weight on point (5, 7), almost any stump that correctly classifies that point will have low weighted error.</p>
+      <p>The winner for Round 2: <strong>x₂ ≥ 6 → predict Blue; x₂ &lt; 6 → predict Red</strong></p>
+      <div class="math-block">
+        Correctly classified by this stump:<br>
+        &nbsp; (1,6), (2,7) → Blue via x₂≥6 ✓<br>
+        &nbsp; (5,7) &nbsp;&nbsp; → Blue via x₂≥6 ✓ (weight 0.50)<br>
+        &nbsp; (5,2), (6,3), (7,4), (6,5) → Red via x₂&lt;6 ✓<br>
+        <br>
+        Misclassified: (1,4) — Blue but x₂&lt;6 → predicted Red<br>
+        Weighted error: ε₂ = 0.07 × 1 ≈ <span class="highlight-val">0.071</span>
+      </div>
+      <div class="callout">Because (1, 4) has a very small weight, even missing it gives very low error. The stump correctly handles the 50%-weight outlier and earns a large α.</div>`,
+    weights: 'afterR1', stumpLine: 'x2', ensemble: [{label:'x₁ < 4 → Blue', alpha:'0.97', color:'#3b82f6'}],
+  },
+  {
+    title: 'Step 7 — Round 2: Alpha and Weight Update',
+    body: `<p>Round 2 stump is very accurate, so it gets a large vote:</p>
+      <div class="math-block">
+        α₂ = ½ · ln( (1 − 0.071) / 0.071 )<br>
+        &nbsp;&nbsp;&nbsp;= ½ · ln(13.1)<br>
+        &nbsp;&nbsp;&nbsp;= <span class="highlight-val">1.28</span>
+      </div>
+      <p>Weight update: the point missed in Round 2 — (1, 4) — gets the large weight boost. Watch the plot: <strong>that point's circle grows dramatically</strong>, while (5, 7) shrinks now that it's been handled.</p>
+      <div class="math-block">
+        After Round 2 normalisation:<br>
+        &nbsp; Point (1, 4): ≈ 50%  (missed in Round 2 — now the heaviest)<br>
+        &nbsp; Point (5, 7): ≈ 27%  (handled in Round 2, weight partially reduced)<br>
+        &nbsp; Others: ≈ 4% each
+      </div>
+      <div class="callout">Each round's weight update creates a new "hardest problem" for the next round. The ensemble progressively patches its own blind spots.</div>`,
+    weights: 'afterR2', stumpLine: 'x2', ensemble: [
+      {label:'x₁ < 4 → Blue', alpha:'0.97', color:'#3b82f6'},
+      {label:'x₂ ≥ 6 → Blue', alpha:'1.28', color:'#a855f7'},
+    ],
+  },
+  {
+    title: 'Step 8 — The Ensemble Makes a Prediction',
+    body: `<p>To classify a new point, every stump votes. Each vote is weighted by α:</p>
+      <div class="math-block">
+        <strong>New point: (4, 5)</strong><br>
+        Stump 1 (x₁&lt;4 → Blue): x₁=4, not &lt;4 → vote <span style="color:#e05252">Red</span> (−0.97)<br>
+        Stump 2 (x₂≥6 → Blue): x₂=5, not ≥6 → vote <span style="color:#e05252">Red</span> (−1.28)<br>
+        Score: −0.97 − 1.28 = −2.25 → <span style="color:#e05252; font-weight:700">Predict Red ✓</span><br>
+        <br>
+        <strong>New point: (5, 7)</strong><br>
+        Stump 1: x₁=5 ≥ 4 → vote Red (−0.97)<br>
+        Stump 2: x₂=7 ≥ 6 → vote <span style="color:#3b82f6">Blue</span> (+1.28)<br>
+        Score: −0.97 + 1.28 = +0.31 → <span style="color:#3b82f6; font-weight:700">Predict Blue ✓</span>
+      </div>
+      <div class="callout">The outlier at (5, 7) flips the decision! Stump 2's louder vote overrides Stump 1's. The ensemble gets it right even though no single stump could.</div>`,
+    weights: 'afterR2', stumpLine: null, ensemble: [
+      {label:'x₁ < 4 → Blue', alpha:'0.97', color:'#3b82f6'},
+      {label:'x₂ ≥ 6 → Blue', alpha:'1.28', color:'#a855f7'},
+    ],
+  },
+  {
+    title: 'Step 9 — Why AdaBoost Works',
+    body: `<p>AdaBoost reduces both <em>bias</em> and <em>variance</em> by combining many low-complexity models:</p>
+      <ul>
+        <li><strong>Each weak learner is interpretable</strong> — a single threshold on one feature</li>
+        <li><strong>The ensemble is expressive</strong> — can carve complex, non-convex decision regions</li>
+        <li><strong>Regularisation via α</strong> — inaccurate stumps get small votes and barely affect the outcome</li>
+      </ul>
+      <p>Common pitfall: <strong>noisy data</strong>. Because AdaBoost keeps boosting weight on misclassified points, a true outlier (mislabelled data) will eventually dominate the weights and distort the ensemble.</p>
+      <div class="callout">
+        In practice: use gradient boosted trees (XGBoost, LightGBM) over classic AdaBoost — they're more robust to noise. But AdaBoost is the clearest way to understand the boosting principle.
+      </div>`,
+    weights: 'afterR2', stumpLine: null, ensemble: [
+      {label:'x₁ < 4 → Blue', alpha:'0.97', color:'#3b82f6'},
+      {label:'x₂ ≥ 6 → Blue', alpha:'1.28', color:'#a855f7'},
+    ],
+  },
+];
+
+// ─── Rendering ───────────────────────────────────────────────────────────────
+
+function renderScatter(step) {
+  const weights = WEIGHTS[step.weights];
+  let s = '';
+  s += `<rect width="420" height="415" fill="#0a1c28"/>`;
+  // Grid
+  for (let v = 0; v <= 8; v++) {
+    const sx = P.L + v * xScale;
+    s += `<line x1="${sx}" y1="${P.T}" x2="${sx}" y2="${P.B}" stroke="#182838" stroke-width="1"/>`;
+  }
+  for (let v = 0; v <= 9; v++) {
+    const sy = P.B - v * yScale;
+    s += `<line x1="${P.L}" y1="${sy}" x2="${P.R}" y2="${sy}" stroke="#182838" stroke-width="1"/>`;
+  }
+  // Split lines
+  if (step.stumpLine === 'x1') {
+    s += `<line x1="${SX1}" y1="${P.T}" x2="${SX1}" y2="${P.B}" stroke="#6b3a8a" stroke-width="2.2" stroke-dasharray="9,5"/>`;
+    s += `<text x="${SX1+4}" y="${P.T+14}" font-size="11" fill="#a855f7" font-weight="700" font-family="sans-serif">x₁ = 4</text>`;
+  }
+  if (step.stumpLine === 'x2') {
+    s += `<line x1="${P.L}" y1="${SX2}" x2="${P.R}" y2="${SX2}" stroke="#a855f7" stroke-width="2.2" stroke-dasharray="9,5"/>`;
+    s += `<text x="${P.L+4}" y="${SX2-6}" font-size="11" fill="#a855f7" font-weight="700" font-family="sans-serif">x₂ = 6</text>`;
+  }
+  // Axes
+  s += `<line x1="${P.L}" y1="${P.T}" x2="${P.L}" y2="${P.B}" stroke="#2a5870" stroke-width="2"/>`;
+  s += `<line x1="${P.L}" y1="${P.B}" x2="${P.R}" y2="${P.B}" stroke="#2a5870" stroke-width="2"/>`;
+  for (let v = 0; v <= 8; v += 2) {
+    s += `<text x="${P.L + v*xScale}" y="${P.B+16}" text-anchor="middle" font-size="11" fill="#5a8898" font-family="sans-serif">${v}</text>`;
+  }
+  for (let v = 0; v <= 8; v += 2) {
+    s += `<text x="${P.L-6}" y="${P.B - v*yScale + 4}" text-anchor="end" font-size="11" fill="#5a8898" font-family="sans-serif">${v}</text>`;
+  }
+  const midX = (P.L+P.R)/2, midY = (P.T+P.B)/2;
+  s += `<text x="${midX}" y="410" text-anchor="middle" font-size="13" fill="#7aacc0" font-weight="700" font-family="sans-serif">x₁</text>`;
+  s += `<text x="12" y="${midY}" text-anchor="middle" font-size="13" fill="#7aacc0" font-weight="700" font-family="sans-serif" transform="rotate(-90,12,${midY})">x₂</text>`;
+  // Points — size proportional to weight, max radius 18
+  const maxW = Math.max(...weights);
+  PTS.forEach((p, i) => {
+    const {x, y} = toSVG(p.x1, p.x2);
+    const r = 7 + (weights[i] / maxW) * 14;
+    if (p.cls === 'blue') {
+      s += `<circle cx="${x}" cy="${y}" r="${r.toFixed(1)}" fill="#3b82f6" stroke="white" stroke-width="1.8"/>`;
+      s += `<text x="${x}" y="${y+4}" text-anchor="middle" font-size="9" fill="white" font-weight="700" font-family="sans-serif">B</text>`;
+    } else {
+      const d = r * 1.1;
+      s += `<polygon points="${x},${y-d*1.32} ${x+d*1.32},${y} ${x},${y+d*1.32} ${x-d*1.32},${y}" fill="#e05252" stroke="white" stroke-width="1.8"/>`;
+      s += `<text x="${x}" y="${y+4}" text-anchor="middle" font-size="9" fill="white" font-weight="700" font-family="sans-serif">R</text>`;
+    }
+    // Weight label if non-uniform
+    if (step.weights !== 'uniform') {
+      s += `<text x="${x}" y="${y - r - 4}" text-anchor="middle" font-size="9" fill="#c0d0d8" font-family="sans-serif">${weights[i].toFixed(2)}</text>`;
+    }
+  });
+  // Legend
+  const lx=P.L+4, ly=P.T+8;
+  s += `<rect x="${lx}" y="${ly}" width="110" height="44" rx="5" fill="#0a1c28" opacity="0.95"/>`;
+  s += `<circle cx="${lx+14}" cy="${ly+12}" r="7" fill="#3b82f6"/>`;
+  s += `<text x="${lx+26}" y="${ly+16}" font-size="11" fill="#7aacc0" font-family="sans-serif">Blue (4 pts)</text>`;
+  const dx=lx+14, dy=ly+30, dd=6.5;
+  s += `<polygon points="${dx},${dy-dd*1.32} ${dx+dd*1.32},${dy} ${dx},${dy+dd*1.32} ${dx-dd*1.32},${dy}" fill="#e05252"/>`;
+  s += `<text x="${lx+26}" y="${ly+34}" font-size="11" fill="#7aacc0" font-family="sans-serif">Red (4 pts)</text>`;
+  return s;
+}
+
+function renderEnsemble(stumps) {
+  if (!stumps.length) {
+    return `<rect width="960" height="120" fill="#0a1c28"/>` +
+      `<text x="480" y="65" text-anchor="middle" font-size="15" fill="#4a6a80" font-family="sans-serif" font-style="italic">No stumps yet — ensemble is empty</text>`;
+  }
+  const parts = [`<rect width="960" height="120" fill="#0a1c28"/>`];
+  const startX = 60, boxW = 200, boxH = 70, gap = 60;
+  stumps.forEach((st, i) => {
+    const x = startX + i * (boxW + gap);
+    const y = 25;
+    parts.push(`<rect x="${x}" y="${y}" width="${boxW}" height="${boxH}" rx="8" fill="#142230" stroke="${st.color}" stroke-width="2"/>`);
+    parts.push(`<text x="${x + boxW/2}" y="${y+22}" text-anchor="middle" font-size="12" font-weight="700" fill="#c0d8e8" font-family="sans-serif">Stump ${i+1}</text>`);
+    parts.push(`<text x="${x + boxW/2}" y="${y+40}" text-anchor="middle" font-size="11" fill="${st.color}" font-family="sans-serif">${st.label}</text>`);
+    parts.push(`<text x="${x + boxW/2}" y="${y+58}" text-anchor="middle" font-size="11" fill="#a0c0d0" font-family="sans-serif">α = ${st.alpha}</text>`);
+    // Arrow to next
+    if (i < stumps.length - 1) {
+      const ax = x + boxW + 4, ay = y + boxH/2;
+      parts.push(`<line x1="${ax}" y1="${ay}" x2="${ax+gap-8}" y2="${ay}" stroke="#4a6a80" stroke-width="2"/>`);
+      parts.push(`<polygon points="${ax+gap-8},${ay-5} ${ax+gap-4},${ay} ${ax+gap-8},${ay+5}" fill="#4a6a80"/>`);
+    }
+  });
+  // Final vote label
+  if (stumps.length > 0) {
+    const lastX = startX + stumps.length * (boxW + gap) - 20;
+    parts.push(`<text x="${lastX}" y="60" font-size="11" fill="#7aacc0" font-style="italic" font-family="sans-serif">→ weighted vote</text>`);
+    parts.push(`<text x="${lastX}" y="78" font-size="11" fill="#7aacc0" font-style="italic" font-family="sans-serif">= final class</text>`);
+  }
+  return parts.join('\n');
+}
+
+// ─── Navigation ──────────────────────────────────────────────────────────────
+
+let currentStep = 0;
+
+function render() {
+  const step = STEPS[currentStep];
+  document.getElementById('scatter').innerHTML = renderScatter(step);
+  document.getElementById('ensemble').innerHTML = renderEnsemble(step.ensemble);
+  document.getElementById('step-title').textContent = step.title;
+  document.getElementById('step-body').innerHTML = step.body;
+  document.getElementById('step-counter').textContent = `Step ${currentStep+1} of ${STEPS.length}`;
+  document.getElementById('prev-btn').disabled = currentStep === 0;
+  document.getElementById('next-btn').disabled = currentStep === STEPS.length - 1;
+  const dots = document.getElementById('dots');
+  dots.innerHTML = '';
+  STEPS.forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'dot' + (i < currentStep ? ' done' : i === currentStep ? ' active' : '');
+    dots.appendChild(d);
+  });
+}
+
+function changeStep(delta) {
+  const next = currentStep + delta;
+  if (next >= 0 && next < STEPS.length) {
+    currentStep = next;
+    render();
+    window.scrollTo({top: 0, behavior: 'smooth'});
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') changeStep(1);
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   changeStep(-1);
+});
+
+render();
+</script>
+</body>
+</html>

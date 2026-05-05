@@ -1,0 +1,27 @@
+# Python artifacts
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Virtual environment
+.venv/
+
+# Metaflow local metadata
+.metaflow/
+
+# Dataset — downloaded by setup.sh
+data/
+
+# Precomputed instructor model variants
+# Only clustering.pkl / recommender.pkl / timeseries.pkl are shipped
+flask_app/models/clustering_*.pkl
+flask_app/models/recommender_*.pkl
+
+# Generated output (students produce their own)
+monitoring.html
+
+# Request logs — written at runtime; students start fresh
+logs/*.jsonl
+
+# Instructor-only scripts — not for students
+instructor/

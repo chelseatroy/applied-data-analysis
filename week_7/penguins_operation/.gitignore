@@ -1,0 +1,9 @@
+# Python artifacts
+__pycache__/
+*.pyc
+
+# Virtual environment
+.venv/
+
+# Metaflow local metadata
+.metaflow/

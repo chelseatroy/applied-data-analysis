@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Getflix Adventure — Recommender System</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0d1117; color: #e6edf3; min-height: 100vh; }
+  header { background: #161b22; border-bottom: 1px solid #30363d; padding: 1rem 2rem; display: flex; align-items: center; gap: 1rem; }
+  header h1 { font-size: 1.3rem; color: #58a6ff; }
+  header span { color: #8b949e; font-size: 0.9rem; }
+  .progress-bar { height: 4px; background: #21262d; }
+  .progress-fill { height: 100%; background: #58a6ff; transition: width 0.4s; }
+  main { max-width: 860px; margin: 2rem auto; padding: 0 1.5rem 5rem; width: 100%; }
+  .step { display: none; }
+  .step.active { display: block; }
+  h2 { font-size: 1.4rem; color: #f0f6fc; margin-bottom: 0.5rem; }
+  p, li { color: #c9d1d9; line-height: 1.7; }
+  ul { padding-left: 1.4rem; margin: 0.5rem 0; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.2rem 1.4rem; margin: 1rem 0; }
+  .choice-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.8rem; margin: 1rem 0; }
+  .choice-btn { background: #21262d; border: 2px solid #30363d; border-radius: 8px; padding: 0.9rem 1rem;
+    color: #c9d1d9; cursor: pointer; text-align: left; transition: border-color 0.2s, background 0.2s; }
+  .choice-btn:hover { border-color: #58a6ff; background: #1c2a3a; }
+  .choice-btn.selected { border-color: #58a6ff; background: #1c2a3a; color: #f0f6fc; }
+  .choice-btn .label { font-weight: 600; font-size: 0.95rem; }
+  .choice-btn .desc { font-size: 0.82rem; color: #8b949e; margin-top: 0.3rem; }
+  .result-box { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 1rem; margin-top: 0.8rem; font-family: monospace; font-size: 0.88rem; color: #7ee787; white-space: pre-wrap; }
+  .bar-chart { margin: 1rem 0; }
+  .bar-row { display: flex; align-items: center; gap: 0.6rem; margin: 0.35rem 0; font-size: 0.85rem; }
+  .bar-label { width: 140px; text-align: right; color: #8b949e; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-label.highlight { color: #f0f6fc; font-weight: 600; }
+  .bar-track { flex: 1; background: #21262d; border-radius: 4px; height: 18px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; background: #58a6ff; transition: width 0.5s; }
+  .bar-fill.highlight { background: #7ee787; }
+  .bar-value { width: 50px; color: #c9d1d9; font-size: 0.82rem; }
+  .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.8rem; margin: 1rem 0; }
+  .stat-card { background: #21262d; border: 1px solid #30363d; border-radius: 8px; padding: 1rem; text-align: center; }
+  .stat-card .num { font-size: 1.6rem; font-weight: 700; color: #58a6ff; }
+  .stat-card .lbl { font-size: 0.78rem; color: #8b949e; margin-top: 0.2rem; }
+  .metric-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; margin: 1rem 0; }
+  .metric-card { background: #21262d; border: 1px solid #30363d; border-radius: 8px; padding: 1rem; text-align: center; }
+  .metric-card .num { font-size: 1.8rem; font-weight: 700; color: #7ee787; }
+  .metric-card .lbl { font-size: 0.82rem; color: #8b949e; margin-top: 0.2rem; }
+  .user-pills { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.8rem 0; }
+  .user-pill { background: #21262d; border: 2px solid #30363d; border-radius: 999px; padding: 0.3rem 0.9rem;
+    color: #8b949e; cursor: pointer; font-size: 0.85rem; transition: all 0.15s; }
+  .user-pill:hover { border-color: #58a6ff; color: #c9d1d9; }
+  .user-pill.selected { border-color: #58a6ff; background: #1c2a3a; color: #f0f6fc; }
+  .rec-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
+  @media (max-width: 600px) { .rec-grid { grid-template-columns: 1fr; } }
+  .rec-list { list-style: none; padding: 0; }
+  .rec-item { display: flex; align-items: baseline; gap: 0.5rem; padding: 0.4rem 0; border-bottom: 1px solid #21262d; font-size: 0.85rem; }
+  .rec-item:last-child { border-bottom: none; }
+  .rec-rank { color: #8b949e; width: 1.4rem; flex-shrink: 0; text-align: right; }
+  .rec-title { color: #c9d1d9; flex: 1; }
+  .rec-score { flex-shrink: 0; font-family: monospace; }
+  .rec-score.predicted { color: #58a6ff; }
+  .rec-score.actual { color: #7ee787; }
+  .nav-row { position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+    display: flex; justify-content: space-between; align-items: center;
+    background: #0d1117; border-top: 1px solid #21262d;
+    padding: 0.75rem max(1.5rem, calc((100vw - 860px) / 2 + 1.5rem)); }
+  button.nav { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; padding: 0.55rem 1.3rem;
+    border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
+  button.nav.primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+  button.nav:disabled { opacity: 0.35; cursor: default; }
+  .badge { display: inline-block; background: #1f6feb22; color: #58a6ff; border: 1px solid #1f6feb55;
+    border-radius: 4px; padding: 0.1rem 0.5rem; font-size: 0.78rem; margin-left: 0.4rem; }
+  .good { color: #7ee787; }
+  .warn { color: #e3b341; }
+  .cmd-block { background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+    padding: 0.8rem 1rem; margin: 0.8rem 0; display: flex; align-items: center; gap: 1rem; }
+  .cmd-block code { font-family: monospace; font-size: 0.92rem; color: #7ee787; flex: 1; }
+  .copy-btn { background: #21262d; border: 1px solid #30363d; color: #c9d1d9;
+    padding: 0.3rem 0.75rem; border-radius: 5px; cursor: pointer; font-size: 0.82rem; flex-shrink: 0; }
+  .copy-btn:hover { border-color: #58a6ff; }
+  a.link-btn { color: #58a6ff; font-size: 0.88rem; }
+  .tip { border-bottom: 1px dashed #58a6ff88; cursor: help; color: inherit; }
+  #tooltip { position: fixed; background: #1c2a3a; border: 1px solid #58a6ff55; border-radius: 7px;
+    color: #c9d1d9; font-size: 0.82rem; line-height: 1.5; max-width: 300px; padding: 0.55rem 0.75rem;
+    pointer-events: none; z-index: 999; display: none; box-shadow: 0 4px 16px #0008; }
+</style>
+</head>
+<body>
+<div id="tooltip"></div>
+<header>
+  <h1>Getflix Adventure</h1>
+  <span>Step 2 of 3 — Recommender System</span>
+</header>
+<div class="progress-bar"><div class="progress-fill" id="progress" style="width:0%"></div></div>
+<main>
+
+<!-- Step 0: Welcome -->
+<div class="step active" id="step-0">
+  <h2>Welcome to the Recommender Walkthrough</h2>
+  <div class="card">
+    <p>In the clustering walkthrough you grouped users by taste. Now Getflix uses those groups
+    to power a second capability: <strong>predicting how much you'll enjoy a movie you've never seen</strong>.</p>
+    <br>
+    <p>This is <span class="tip" data-tip="cf">collaborative filtering</span> — no movie metadata,
+    just the ratings matrix. "Users who rated movies similarly to you also loved <em>X</em>, so you probably will too."</p>
+    <br>
+    <p>You'll choose an algorithm and tune one hyperparameter. The models are precomputed — you'll
+    see real evaluation metrics, browse sample recommendations, then download a notebook and a
+    trained model that plugs into the Getflix web app.</p>
+    <br>
+    <p><strong>Data:</strong> MovieLens 100K — 100,000 ratings from 943 users across 1,682 movies.</p>
+  </div>
+  <div class="nav-row">
+    <button class="nav" disabled>Back</button>
+    <button class="nav primary" onclick="goTo(1)">Start &rarr;</button>
+  </div>
+</div>
+
+<!-- Step 1: Explore data -->
+<div class="step" id="step-1">
+  <h2>The Ratings Matrix</h2>
+  <div class="stat-row" id="stat-row"></div>
+  <div class="card">
+    <p>Rating distribution — users tend to rate movies they already chose to watch, so ratings skew high.</p>
+    <div class="bar-chart" id="rating-dist"></div>
+  </div>
+  <div class="card">
+    <p>The matrix is <span class="tip" data-tip="sparsity">very sparse</span>: most users have
+    only rated a small slice of all movies. A recommender must make good predictions even for
+    user–movie pairs it has never seen — that's the core challenge.</p>
+    <div class="result-box" id="sparsity-box"></div>
+    <p style="margin-top:0.8rem;font-size:0.85rem;color:#8b949e">
+      Explore the data in more depth: <a class="link-btn" href="explore.html" target="_blank">open explore.html &rarr;</a>
+    </p>
+  </div>
+  <div class="nav-row">
+    <button class="nav" onclick="goTo(0)">Back</button>
+    <button class="nav primary" onclick="goTo(2)">Next &rarr;</button>
+  </div>
+</div>
+
+<!-- Step 2: Choose algorithm family -->
+<div class="step" id="step-2">
+  <h2>Choose an Algorithm Family</h2>
+  <p>Two fundamentally different approaches to collaborative filtering:</p>
+  <div style="display:flex;flex-direction:column;gap:0.8rem;margin:1rem 0">
+    <button class="choice-btn" onclick="chooseFamily('svd', this)">
+      <div class="label"><span class="tip" data-tip="svd">SVD</span> — Matrix Factorization</div>
+      <div class="desc">Learns hidden <span class="tip" data-tip="latent_factors">latent factors</span>
+      for every user and movie. A user's predicted rating for a movie is the dot product of their
+      factor vectors. Model-based: fast at prediction time and handles sparsity well.</div>
+    </button>
+    <button class="choice-btn" onclick="chooseFamily('knn_basic', this)">
+      <div class="label"><span class="tip" data-tip="knn_cf">KNN Basic</span> — User-User Collaborative Filtering</div>
+      <div class="desc">Finds the <em>k</em> users most
+      <span class="tip" data-tip="cosine_sim">similar</span> to you, then averages their ratings
+      for unseen movies. Memory-based: intuitive, but doesn't correct for users who always rate high or low.</div>
+    </button>
+    <button class="choice-btn" onclick="chooseFamily('knn_means', this)">
+      <div class="label"><span class="tip" data-tip="knn_cf">KNN + Mean Normalization</span> — Bias-Corrected CF</div>
+      <div class="desc">Same as KNN Basic but subtracts each user's mean rating before computing
+      similarity. Removes <span class="tip" data-tip="rating_bias">rating scale bias</span>:
+      a generous rater and a harsh rater who agree on <em>which</em> movies are good will now look similar.</div>
+    </button>
+  </div>
+  <div class="card" id="family-card" style="display:none">
+    <p id="family-detail"></p>
+  </div>
+  <div class="nav-row">
+    <button class="nav" onclick="goTo(1)">Back</button>
+    <button class="nav primary" id="family-next" disabled onclick="goTo(3)">Next &rarr;</button>
+  </div>
+</div>
+
+<!-- Step 3: Choose hyperparameter -->
+<div class="step" id="step-3">
+  <h2 id="param-heading">Choose a Hyperparameter</h2>
+  <p id="param-intro"></p>
+  <div class="choice-grid" id="param-grid" style="margin-top:1rem"></div>
+  <div class="card" id="param-card" style="display:none">
+    <p id="param-detail"></p>
+  </div>
+  <div class="nav-row">
+    <button class="nav" onclick="goTo(2)">Back</button>
+    <button class="nav primary" id="param-next" disabled onclick="goTo(4)">Next &rarr;</button>
+  </div>
+</div>
+
+<!-- Step 4: Results -->
+<div class="step" id="step-4">
+  <h2>Evaluation Results</h2>
+  <p style="margin-bottom:0.8rem">Metrics from <span class="tip" data-tip="cv5">5-fold cross-validation</span>
+  on the full 100K ratings dataset.</p>
+  <div class="metric-row" id="metric-row"></div>
+  <div class="card">
+    <p style="margin-bottom:0.5rem;color:#8b949e;font-size:0.85rem">
+      <span class="tip" data-tip="rmse">RMSE</span> comparison — all precomputed models, your choice highlighted:
+    </p>
+    <div class="bar-chart" id="rmse-compare"></div>
+  </div>
+  <div class="card" id="rmse-insight"></div>
+  <div class="nav-row">
+    <button class="nav" onclick="goTo(3)">Back</button>
+    <button class="nav primary" onclick="goTo(5)">Next &rarr;</button>
+  </div>
+</div>
+
+<!-- Step 5: Sample recommendations -->
+<div class="step" id="step-5">
+  <h2>Sample Recommendations</h2>
+  <p>Pick a user to see what your model recommends — alongside their top-rated movies for comparison.</p>
+  <div class="user-pills" id="user-pills"></div>
+  <div class="rec-grid">
+    <div class="card">
+      <p style="color:#7ee787;font-weight:600;margin-bottom:0.6rem">&#9733; Their top-rated movies</p>
+      <ul class="rec-list" id="actual-list"></ul>
+    </div>
+    <div class="card">
+      <p style="color:#58a6ff;font-weight:600;margin-bottom:0.6rem">&#10024; Model recommends</p>
+      <ul class="rec-list" id="recs-list"></ul>
+    </div>
+  </div>
+  <div class="card" style="margin-top:0.5rem">
+    <p style="font-size:0.85rem;color:#8b949e">
+      Recommendations are the movies the user <strong>hasn't rated</strong> with the highest predicted score.
+      A good recommender surfaces unseen movies whose style matches what the user already loves.
+    </p>
+  </div>
+  <div class="nav-row">
+    <button class="nav" onclick="goTo(4)">Back</button>
+    <button class="nav primary" onclick="goTo(6)">Next &rarr;</button>
+  </div>
+</div>
+
+<!-- Step 6: Deploy -->
+<div class="step" id="step-6">
+  <h2>Run the Pipeline</h2>
+  <div class="card">
+    <p>Your choices:</p>
+    <ul style="margin:0.6rem 0 1rem 1.4rem">
+      <li>Algorithm: <strong id="summary-algo"></strong></li>
+      <li>RMSE: <strong id="summary-rmse"></strong></li>
+      <li>MAE: <strong id="summary-mae"></strong></li>
+    </ul>
+    <p>Run this <span class="tip" data-tip="metaflow">Metaflow</span> pipeline to train your
+    model and save it to <code>flask_app/models/recommender.pkl</code>:</p>
+    <div class="cmd-block">
+      <code id="deploy-cmd"></code>
+      <button class="copy-btn" id="copy-btn" onclick="copyCmd()">Copy</button>
+    </div>
+    <p style="font-size:0.85rem;color:#8b949e;margin-top:0.5rem">
+      Metaflow records every run. Check your history with:<br>
+      <code style="color:#7ee787">python recommender_flow.py show</code>
+    </p>
+  </div>
+  <div class="card" style="margin-top:0.5rem">
+    <p style="font-size:0.85rem;color:#8b949e">
+      Once you've run all three pipelines and saved all three model pickles, start the Flask app:<br><br>
+      <code style="color:#7ee787">python flask_app/app.py</code>
+    </p>
+  </div>
+  <div class="nav-row">
+    <button class="nav" onclick="goTo(5)">Back</button>
+    <button class="nav" disabled>Done</button>
+  </div>
+</div>
+
+</main>
+<script>
+const DATA = {"svd_f20":{"rmse":0.9354,"mae":0.7386,"training_time":1.3,"sample_recs":{"1":[{"movie_id":603,"title":"Rear Window (1954)","predicted_rating":4.75},{"movie_id":483,"title":"Casablanca (1942)","predicted_rating":4.64},{"movie_id":479,"title":"Vertigo (1958)","predicted_rating":4.62},{"movie_id":408,"title":"Close Shave, A (1995)","predicted_rating":4.61},{"movie_id":302,"title":"L.A. Confidential (1997)","predicted_rating":4.52},{"movie_id":474,"title":"Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb (1963)","predicted_rating":4.49},{"movie_id":963,"title":"Some Folks Call It a Sling Blade (1993)","predicted_rating":4.47},{"movie_id":657,"title":"Manchurian Candidate, The (1962)","predicted_rating":4.45},{"movie_id":484,"title":"Maltese Falcon, The (1941)","predicted_rating":4.45},{"movie_id":318,"title":"Schindler's List (1993)","predicted_rating":4.45}],"2":[{"movie_id":169,"title":"Wrong Trousers, The (1993)","predicted_rating":4.65},{"movie_id":483,"title":"Casablanca (1942)","predicted_rating":4.61},{"movie_id":178,"title":"12 Angry Men (1957)","predicted_rating":4.56},{"movie_id":64,"title":"Shawshank Redemption, The (1994)","predicted_rating":4.54},{"movie_id":408,"title":"Close Shave, A (1995)","predicted_rating":4.53},{"movie_id":318,"title":"Schindler's List (1993)","predicted_rating":4.52},{"movie_id":603,"title":"Rear Window (1954)","predicted_rating":4.51},{"movie_id":480,"title":"North by Northwest (1959)","predicted_rating":4.5},{"movie_id":513,"title":"Third Man, The (1949)","predicted_rating":4.46},{"movie_id":511,"title":"Lawrence of Arabia (1962)","predicted_rating":4.46}],"3":[{"movie_id":408,"title":"Close Shave, A (1995)","predicted_rating":4.08},{"movie_id":169,"title":"Wrong Trousers, The (1993)","predicted_rating":4.03},{"movie_id":483,"title":"Casablanca (1942)","predicted_rating":3.97},{"movie_id":64,"title":"Shawshank Redemption, The (1994)","predicted_rating":3.94},{"movie_id":134,"title":"Citizen Kane (1941)","predicted_rating":3.92},{"movie_id":168,"title":"Monty Python and the Holy Grail (1974)","predicted_rating":3.91},{"movie_id":114,"title":"Wallace & Gromit: The Best of Aardman Animation (1996)","predicted_rating":3.89},{"movie_id":12,"title":"Usual Suspects, The (1995)","predicted_rating":3.89},{"movie_id":963,"title":"Some Folks Call It a Sling Blade (1993)","predicted_rating":3.86},{"movie_id":190,"title":"Henry V (1989)","predicted_rating":3.86}],"4":[{"movie_id":302,"title":"L.A. Confidential (1997)","predicted_rating":5},{"movie_id":474,"title":"Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb (1963)","predicted_rating":5},{"movie_id":98,"title":"Silence of the Lambs, The (1991)","predicted_rating":5},{"movie_id":603,"title":"Rear Window (1954)","predicted_rating":5},{"movie_id":515,"title":"Boot, Das (1981)","predicted_rating":5},{"movie_id":427,"title":"To Kill a Mockingbird (1962)","predicted_rating":5},{"movie_id":512,"title":"Wings of Desire (1987)","predicted_rating":5},{"movie_id":165,"title":"Jean de Florette (1986)","predicted_rating":5},{"movie_id":480,"title":"North by Northwest (1959)","predicted_rating":5},{"movie_id":496,"title":"It's a Wonderful Life (1946)","predicted_rating":5}],"5":[{"movie_id":134,"title":"Citizen Kane (1941)","predicted_rating":4.35},{"movie_id":654,"title":"Chinatown (1974)","predicted_rating":4.32},{"movie_id":114,"title":"Wallace & Gromit: The Best of Aardman Animation (1996)","predicted_rating":4.28},{"movie_id":474,"title":"Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb (1963)","predicted_rating":4.22},{"movie_id":12,"title":"Usual Suspects, The (1995)","predicted_rating":4.21},{"movie_id":179,"title":"Clockwork Orange, A (1971)","predicted_rating":4.18},{"movie_id":285,"title":"Secrets & Lies (1996)","predicted_rating":4.15},{"movie_id":511,"title":"Lawrence of Arabia (1962)","predicted_rating":4.14},{"movie_id":515,"title":"Boot, Das (1981)","predicted_rating":4.1},{"movie_id":647,"title":"Ran (1985)","predicted_rating":4.07}]},"model_path":"/Users/chelseatroy/teaching/applied-data-analysis/week_7/netflix_adventure/flask_app/models/recommender_svd_f20.pkl"},"svd_f50":{"rmse":0.9338,"mae":0.7363,"training_time":1.8,"sample_recs":{"1":[{"movie_id":483,"title":"Casablanca (1942)","predicted_rating":4.66},{"movie_id":427,"title":"To Kill a Mockingbird (1962)","predicted_rating":4.65},{"movie_id":657,"title":"Manchurian Candidate, The (1962)","predicted_rating":4.62},{"movie_id":603,"title":"Rear Window (1954)","predicted_rating":4.59},{"movie_id":408,"title":"Close Shave, A (1995)","predicted_rating":4.58},{"movie_id":302,"title":"L.A. Confidential (1997)","predicted_rating":4.56},{"movie_id":484,"title":"Maltese Falcon, The (1941)","predicted_rating":4.55},{"movie_id":512,"title":"Wings of Desire (1987)","predicted_rating":4.54},{"movie_id":511,"title":"Lawrence of Arabia (1962)","predicted_rating":4.52},{"movie_id":709,"title":"Strictly Ballroom (1992)","predicted_rating":4.48}],"2":[{"movie_id":169,"title":"Wrong Trousers, The (1993)","predicted_rating":4.81},{"movie_id":178,"title":"12 Angry Men (1957)","predicted_rating":4.66},{"movie_id":603,"title":"Rear Window (1954)","predicted_rating":4.65},{"movie_id":318,"title":"Schindler's List (1993)","predicted_rating":4.63},{"movie_id":408,"title":"Close Shave, A (1995)","predicted_rating":4.6},{"movie_id":483,"title":"Casablanca (1942)","predicted_rating":4.58},{"movie_id":480,"title":"North by Northwest (1959)","predicted_rating":4.55},{"movie_id":513,"title":"Third Man, The (1949)","predicted_rating":4.53},{"movie_id":134,"title":"Citizen Kane (1941)","predicted_rating":4.51},{"movie_id":474,"title":"Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb (1963)","predicted_rating":4.49}],"3":[{"movie_id":174,"title":"Raiders of the Lost Ark (1981)","predicted_rating":4.09},{"movie_id":169,"title":"Wrong Trousers, The (1993)","predicted_rating":4.07},{"movie_id":98,"title":"Silence of the Lambs, The (1991)","predicted_rating":4.0},{"movie_id":483,"title":"Casablanca (1942)","predicted_rating":3.95},{"movie_id":603,"title":"Rear Window (1954)","predicted_rating":3.95},{"movie_id":513,"title":"Third Man, The (1949)","predicted_rating":3.9},{"movie_id":480,"title":"North by Northwest (1959)","predicted_rating":3.9},{"movie_id":251,"title":"Shall We Dance? (1996)","predicted_rating":3.89},{"movie_id":178,"title":"12 Angry Men (1957)","predicted_rating":3.89},{"movie_id":165,"title":"Jean de Florette (1986)","predicted_rating":3.88}],"4":[{"movie_id":474,"title":"Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb (1963)","predicted_rating":5},{"movie_id":98,"title":"Silence of the Lambs, The (1991)","predicted_rating":5},{"movie_id":515,"title":"Boot, Das (1981)","predicted_rating":5},{"movie_id":427,"title":"To Kill a Mockingbird (1962)","predicted_rating":5},{"movie_id":480,"title":"North by Northwest (1959)","predicted_rating":5},{"movie_id":498,"title":"African Queen, The (1951)","predicted_rating":5},{"movie_id":174,"title":"Raiders of the Lost Ark (1981)","predicted_rating":5},{"movie_id":479,"title":"Vertigo (1958)","predicted_rating":5},{"movie_id":272,"title":"Good Will Hunting (1997)","predicted_rating":5},{"movie_id":172,"title":"Empire Strikes Back, The (1980)","predicted_rating":5}],"5":[{"movie_id":114,"title":"Wallace & Gromit: The Best of Aardman Animation (1996)","predicted_rating":4.31},{"movie_id":285,"title":"Secrets & Lies (1996)","predicted_rating":4.28},{"movie_id":127,"title":"Godfather, The (1972)","predicted_rating":4.18},{"movie_id":137,"title":"Big Night (1996)","predicted_rating":4.17},{"movie_id":134,"title":"Citizen Kane (1941)","predicted_rating":4.16},{"movie_id":963,"title":"Some Folks Call It a Sling Blade (1993)","predicted_rating":4.14},{"movie_id":12,"title":"Usual Suspects, The (1995)","predicted_rating":4.13},{"movie_id":513,"title":"Third Man, The (1949)","predicted_rating":4.05},{"movie_id":177,"title":"Good, The Bad and The Ugly, The (1966)","predicted_rating":4.03},{"movie_id":474,"title":"Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb (1963)","predicted_rating":4.03}]},"model_path":"/Users/chelseatroy/teaching/applied-data-analysis/week_7/netflix_adventure/flask_app/models/recommender_svd_f50.pkl"},"svd_f100":{"rmse":0.936,"mae":0.7375,"training_time":2.5,"sample_recs":{"1":[{"movie_id":513,"title":"Third Man, The (1949)","predicted_rating":4.89},{"movie_id":919,"title":"City of Lost Children, The (1995)","predicted_rating":4.89},{"movie_id":302,"title":"L.A. Confidential (1997)","predicted_rating":4.85},{"movie_id":276,"title":"Leaving Las Vegas (1995)","predicted_rating":4.84},{"movie_id":483,"title":"Casablanca (1942)","predicted_rating":4.82},{"movie_id":474,"title":"Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb (1963)","predicted_rating":4.8},{"movie_id":285,"title":"Secrets & Lies (1996)","predicted_rating":4.78},{"movie_id":508,"title":"People vs. Larry Flynt, The (1996)","predicted_rating":4.73},{"movie_id":318,"title":"Schindler's List (1993)","predicted_rating":4.73},{"movie_id":408,"title":"Close Shave, A (1995)","predicted_rating":4.71}],"2":[{"movie_id":169,"title":"Wrong Trousers, The (1993)","predicted_rating":4.8},{"movie_id":483,"title":"Casablanca (1942)","predicted_rating":4.7},{"movie_id":318,"title":"Schindler's List (1993)","predicted_rating":4.68},{"movie_id":168,"title":"Monty Python and the Holy Grail (1974)","predicted_rating":4.66},{"movie_id":603,"title":"Rear Window (1954)","predicted_rating":4.62},{"movie_id":114,"title":"Wallace & Gromit: The Best of Aardman Animation (1996)","predicted_rating":4.54},{"movie_id":479,"title":"Vertigo (1958)","predicted_rating":4.52},{"movie_id":963,"title":"Some Folks Call It a Sling Blade (1993)","predicted_rating":4.52},{"movie_id":515,"title":"Boot, Das (1981)","predicted_rating":4.51},{"movie_id":408,"title":"Close Shave, A (1995)","predicted_rating":4.5}],"3":[{"movie_id":134,"title":"Citizen Kane (1941)","predicted_rating":4.25},{"movie_id":483,"title":"Casablanca (1942)","predicted_rating":4.17},{"movie_id":482,"title":"Some Like It Hot (1959)","predicted_rating":4.09},{"movie_id":211,"title":"M*A*S*H (1970)","predicted_rating":4.06},{"movie_id":530,"title":"Man Who Would Be King, The (1975)","predicted_rating":3.99},{"movie_id":474,"title":"Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb (1963)","predicted_rating":3.99},{"movie_id":199,"title":"Bridge on the River Kwai, The (1957)","predicted_rating":3.98},{"movie_id":408,"title":"Close Shave, A (1995)","predicted_rating":3.97},{"movie_id":173,"title":"Princess Bride, The (1987)","predicted_rating":3.96},{"movie_id":223,"title":"Sling Blade (1996)","predicted_rating":3.93}],"4":[{"movie_id":302,"title":"L.A. Confidential (1997)","predicted_rating":5},{"movie_id":98,"title":"Silence of the Lambs, The (1991)","predicted_rating":5},{"movie_id":194,"title":"Sting, The (1973)","predicted_rating":5},{"movie_id":603,"title":"Rear Window (1954)","predicted_rating":5},{"movie_id":515,"title":"Boot, Das (1981)","predicted_rating":5},{"movie_id":427,"title":"To Kill a Mockingbird (1962)","predicted_rating":5},{"movie_id":174,"title":"Raiders of the Lost Ark (1981)","predicted_rating":5},{"movie_id":479,"title":"Vertigo (1958)","predicted_rating":5},{"movie_id":272,"title":"Good Will Hunting (1997)","predicted_rating":5},{"movie_id":48,"title":"Hoop Dreams (1994)","predicted_rating":5}],"5":[{"movie_id":285,"title":"Secrets & Lies (1996)","predicted_rating":4.71},{"movie_id":475,"title":"Trainspotting (1996)","predicted_rating":4.55},{"movie_id":474,"title":"Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb (1963)","predicted_rating":4.53},{"movie_id":55,"title":"Professional, The (1994)","predicted_rating":4.53},{"movie_id":134,"title":"Citizen Kane (1941)","predicted_rating":4.48},{"movie_id":513,"title":"Third Man, The (1949)","predicted_rating":4.4},{"movie_id":483,"title":"Casablanca (1942)","predicted_rating":4.39},{"movie_id":276,"title":"Leaving Las Vegas (1995)","predicted_rating":4.36},{"movie_id":114,"title":"Wallace & Gromit: The Best of Aardman Animation (1996)","predicted_rating":4.35},{"movie_id":178,"title":"12 Angry Men (1957)","predicted_rating":4.35}]},"model_path":"/Users/chelseatroy/teaching/applied-data-analysis/week_7/netflix_adventure/flask_app/models/recommender_svd_f100.pkl"},"knn_basic_k20":{"rmse":1.0243,"mae":0.809,"training_time":5.1,"sample_recs":{"1":[{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":5},{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":5},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":5},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":5},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":5},{"movie_id":1122,"title":"They Made Me a Criminal (1939)","predicted_rating":5},{"movie_id":1201,"title":"Marlene Dietrich: Shadow and Light (1996) ","predicted_rating":5},{"movie_id":1189,"title":"Prefontaine (1997)","predicted_rating":5.0},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":5.0},{"movie_id":1293,"title":"Star Kid (1997)","predicted_rating":5.0}],"2":[{"movie_id":1189,"title":"Prefontaine (1997)","predicted_rating":5},{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":5},{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":5},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":5},{"movie_id":1293,"title":"Star Kid (1997)","predicted_rating":5},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":5},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":5},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":5},{"movie_id":1122,"title":"They Made Me a Criminal (1939)","predicted_rating":5},{"movie_id":1201,"title":"Marlene Dietrich: Shadow and Light (1996) ","predicted_rating":5}],"3":[{"movie_id":1189,"title":"Prefontaine (1997)","predicted_rating":5},{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":5},{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":5},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":5},{"movie_id":1293,"title":"Star Kid (1997)","predicted_rating":5},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":5},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":5},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":5},{"movie_id":1122,"title":"They Made Me a Criminal (1939)","predicted_rating":5},{"movie_id":1201,"title":"Marlene Dietrich: Shadow and Light (1996) ","predicted_rating":5}],"4":[{"movie_id":1189,"title":"Prefontaine (1997)","predicted_rating":5},{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":5},{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":5},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":5},{"movie_id":1293,"title":"Star Kid (1997)","predicted_rating":5},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":5},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":5},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":5},{"movie_id":1122,"title":"They Made Me a Criminal (1939)","predicted_rating":5},{"movie_id":1201,"title":"Marlene Dietrich: Shadow and Light (1996) ","predicted_rating":5}],"5":[{"movie_id":1189,"title":"Prefontaine (1997)","predicted_rating":5},{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":5},{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":5},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":5},{"movie_id":1293,"title":"Star Kid (1997)","predicted_rating":5},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":5},{"movie_id":1656,"title":"Little City (1998)","predicted_rating":5},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":5},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":5},{"movie_id":1122,"title":"They Made Me a Criminal (1939)","predicted_rating":5}]},"model_path":"/Users/chelseatroy/teaching/applied-data-analysis/week_7/netflix_adventure/flask_app/models/recommender_knn_basic_k20.pkl"},"knn_basic_k40":{"rmse":1.0171,"mae":0.8045,"training_time":5.7,"sample_recs":{"1":[{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":5},{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":5},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":5},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":5},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":5},{"movie_id":1122,"title":"They Made Me a Criminal (1939)","predicted_rating":5},{"movie_id":1201,"title":"Marlene Dietrich: Shadow and Light (1996) ","predicted_rating":5},{"movie_id":1189,"title":"Prefontaine (1997)","predicted_rating":5.0},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":5.0},{"movie_id":1293,"title":"Star Kid (1997)","predicted_rating":5.0}],"2":[{"movie_id":1189,"title":"Prefontaine (1997)","predicted_rating":5},{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":5},{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":5},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":5},{"movie_id":1293,"title":"Star Kid (1997)","predicted_rating":5},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":5},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":5},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":5},{"movie_id":1122,"title":"They Made Me a Criminal (1939)","predicted_rating":5},{"movie_id":1201,"title":"Marlene Dietrich: Shadow and Light (1996) ","predicted_rating":5}],"3":[{"movie_id":1189,"title":"Prefontaine (1997)","predicted_rating":5},{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":5},{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":5},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":5},{"movie_id":1293,"title":"Star Kid (1997)","predicted_rating":5},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":5},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":5},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":5},{"movie_id":1122,"title":"They Made Me a Criminal (1939)","predicted_rating":5},{"movie_id":1201,"title":"Marlene Dietrich: Shadow and Light (1996) ","predicted_rating":5}],"4":[{"movie_id":1189,"title":"Prefontaine (1997)","predicted_rating":5},{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":5},{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":5},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":5},{"movie_id":1293,"title":"Star Kid (1997)","predicted_rating":5},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":5},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":5},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":5},{"movie_id":1122,"title":"They Made Me a Criminal (1939)","predicted_rating":5},{"movie_id":1201,"title":"Marlene Dietrich: Shadow and Light (1996) ","predicted_rating":5}],"5":[{"movie_id":1189,"title":"Prefontaine (1997)","predicted_rating":5},{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":5},{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":5},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":5},{"movie_id":1293,"title":"Star Kid (1997)","predicted_rating":5},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":5},{"movie_id":1656,"title":"Little City (1998)","predicted_rating":5},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":5},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":5},{"movie_id":1122,"title":"They Made Me a Criminal (1939)","predicted_rating":5}]},"model_path":"/Users/chelseatroy/teaching/applied-data-analysis/week_7/netflix_adventure/flask_app/models/recommender_knn_basic_k40.pkl"},"knn_basic_k80":{"rmse":1.016,"mae":0.8051,"training_time":6.6,"sample_recs":{"1":[{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":5},{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":5},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":5},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":5},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":5},{"movie_id":1122,"title":"They Made Me a Criminal (1939)","predicted_rating":5},{"movie_id":1201,"title":"Marlene Dietrich: Shadow and Light (1996) ","predicted_rating":5},{"movie_id":1189,"title":"Prefontaine (1997)","predicted_rating":5.0},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":5.0},{"movie_id":1293,"title":"Star Kid (1997)","predicted_rating":5.0}],"2":[{"movie_id":1189,"title":"Prefontaine (1997)","predicted_rating":5},{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":5},{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":5},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":5},{"movie_id":1293,"title":"Star Kid (1997)","predicted_rating":5},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":5},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":5},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":5},{"movie_id":1122,"title":"They Made Me a Criminal (1939)","predicted_rating":5},{"movie_id":1201,"title":"Marlene Dietrich: Shadow and Light (1996) ","predicted_rating":5}],"3":[{"movie_id":1189,"title":"Prefontaine (1997)","predicted_rating":5},{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":5},{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":5},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":5},{"movie_id":1293,"title":"Star Kid (1997)","predicted_rating":5},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":5},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":5},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":5},{"movie_id":1122,"title":"They Made Me a Criminal (1939)","predicted_rating":5},{"movie_id":1201,"title":"Marlene Dietrich: Shadow and Light (1996) ","predicted_rating":5}],"4":[{"movie_id":1189,"title":"Prefontaine (1997)","predicted_rating":5},{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":5},{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":5},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":5},{"movie_id":1293,"title":"Star Kid (1997)","predicted_rating":5},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":5},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":5},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":5},{"movie_id":1122,"title":"They Made Me a Criminal (1939)","predicted_rating":5},{"movie_id":1201,"title":"Marlene Dietrich: Shadow and Light (1996) ","predicted_rating":5}],"5":[{"movie_id":1189,"title":"Prefontaine (1997)","predicted_rating":5},{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":5},{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":5},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":5},{"movie_id":1293,"title":"Star Kid (1997)","predicted_rating":5},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":5},{"movie_id":1656,"title":"Little City (1998)","predicted_rating":5},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":5},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":5},{"movie_id":1122,"title":"They Made Me a Criminal (1939)","predicted_rating":5}]},"model_path":"/Users/chelseatroy/teaching/applied-data-analysis/week_7/netflix_adventure/flask_app/models/recommender_knn_basic_k80.pkl"},"knn_means_k20":{"rmse":0.9633,"mae":0.7616,"training_time":5.1,"sample_recs":{"1":[{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":5},{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":5},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":5},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":5},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":5},{"movie_id":1642,"title":"Some Mother's Son (1996)","predicted_rating":4.91},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":4.9},{"movie_id":1293,"title":"Star Kid (1997)","predicted_rating":4.8},{"movie_id":1449,"title":"Pather Panchali (1955)","predicted_rating":4.78},{"movie_id":1398,"title":"Anna (1996)","predicted_rating":4.77}],"2":[{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":5},{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":5},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":5},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":5},{"movie_id":1642,"title":"Some Mother's Son (1996)","predicted_rating":5},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":5},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":5},{"movie_id":1449,"title":"Pather Panchali (1955)","predicted_rating":4.88},{"movie_id":1293,"title":"Star Kid (1997)","predicted_rating":4.88},{"movie_id":1398,"title":"Anna (1996)","predicted_rating":4.87}],"3":[{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":4.7},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":4.5},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":4.29},{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":4.28},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":4.21},{"movie_id":1642,"title":"Some Mother's Son (1996)","predicted_rating":4.1},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":4.09},{"movie_id":1449,"title":"Pather Panchali (1955)","predicted_rating":4.0},{"movie_id":1293,"title":"Star Kid (1997)","predicted_rating":3.97},{"movie_id":1398,"title":"Anna (1996)","predicted_rating":3.96}],"4":[{"movie_id":474,"title":"Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb (1963)","predicted_rating":5},{"movie_id":515,"title":"Boot, Das (1981)","predicted_rating":5},{"movie_id":498,"title":"African Queen, The (1951)","predicted_rating":5},{"movie_id":483,"title":"Casablanca (1942)","predicted_rating":5},{"movie_id":408,"title":"Close Shave, A (1995)","predicted_rating":5},{"movie_id":89,"title":"Blade Runner (1982)","predicted_rating":5},{"movie_id":169,"title":"Wrong Trousers, The (1993)","predicted_rating":5},{"movie_id":60,"title":"Three Colors: Blue (1993)","predicted_rating":5},{"movie_id":57,"title":"Priest (1994)","predicted_rating":5},{"movie_id":251,"title":"Shall We Dance? (1996)","predicted_rating":5}],"5":[{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":4.78},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":4.58},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":4.37},{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":4.34},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":4.29},{"movie_id":1463,"title":"Boys, Les (1997)","predicted_rating":4.18},{"movie_id":1642,"title":"Some Mother's Son (1996)","predicted_rating":4.17},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":4.17},{"movie_id":1233,"title":"N\u00e9nette et Boni (1996)","predicted_rating":4.07},{"movie_id":1449,"title":"Pather Panchali (1955)","predicted_rating":4.05}]},"model_path":"/Users/chelseatroy/teaching/applied-data-analysis/week_7/netflix_adventure/flask_app/models/recommender_knn_means_k20.pkl"},"knn_means_k40":{"rmse":0.9549,"mae":0.754,"training_time":6.2,"sample_recs":{"1":[{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":5},{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":5},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":5},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":5},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":5},{"movie_id":1642,"title":"Some Mother's Son (1996)","predicted_rating":4.91},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":4.9},{"movie_id":1293,"title":"Star Kid (1997)","predicted_rating":4.8},{"movie_id":1449,"title":"Pather Panchali (1955)","predicted_rating":4.78},{"movie_id":1398,"title":"Anna (1996)","predicted_rating":4.77}],"2":[{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":5},{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":5},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":5},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":5},{"movie_id":1642,"title":"Some Mother's Son (1996)","predicted_rating":5},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":5},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":5},{"movie_id":1449,"title":"Pather Panchali (1955)","predicted_rating":4.88},{"movie_id":1293,"title":"Star Kid (1997)","predicted_rating":4.88},{"movie_id":1398,"title":"Anna (1996)","predicted_rating":4.87}],"3":[{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":4.7},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":4.5},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":4.29},{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":4.28},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":4.21},{"movie_id":1642,"title":"Some Mother's Son (1996)","predicted_rating":4.1},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":4.09},{"movie_id":1449,"title":"Pather Panchali (1955)","predicted_rating":4.0},{"movie_id":1293,"title":"Star Kid (1997)","predicted_rating":3.97},{"movie_id":1398,"title":"Anna (1996)","predicted_rating":3.96}],"4":[{"movie_id":474,"title":"Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb (1963)","predicted_rating":5},{"movie_id":483,"title":"Casablanca (1942)","predicted_rating":5},{"movie_id":408,"title":"Close Shave, A (1995)","predicted_rating":5},{"movie_id":318,"title":"Schindler's List (1993)","predicted_rating":5},{"movie_id":64,"title":"Shawshank Redemption, The (1994)","predicted_rating":5},{"movie_id":169,"title":"Wrong Trousers, The (1993)","predicted_rating":5},{"movie_id":251,"title":"Shall We Dance? (1996)","predicted_rating":5},{"movie_id":963,"title":"Some Folks Call It a Sling Blade (1993)","predicted_rating":5},{"movie_id":114,"title":"Wallace & Gromit: The Best of Aardman Animation (1996)","predicted_rating":5},{"movie_id":113,"title":"Horseman on the Roof, The (Hussard sur le toit, Le) (1995)","predicted_rating":5}],"5":[{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":4.78},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":4.58},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":4.37},{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":4.34},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":4.29},{"movie_id":1463,"title":"Boys, Les (1997)","predicted_rating":4.18},{"movie_id":1642,"title":"Some Mother's Son (1996)","predicted_rating":4.17},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":4.17},{"movie_id":1233,"title":"N\u00e9nette et Boni (1996)","predicted_rating":4.07},{"movie_id":1449,"title":"Pather Panchali (1955)","predicted_rating":4.05}]},"model_path":"/Users/chelseatroy/teaching/applied-data-analysis/week_7/netflix_adventure/flask_app/models/recommender_knn_means_k40.pkl"},"knn_means_k80":{"rmse":0.9538,"mae":0.7522,"training_time":7.2,"sample_recs":{"1":[{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":5},{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":5},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":5},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":5},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":5},{"movie_id":1642,"title":"Some Mother's Son (1996)","predicted_rating":4.91},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":4.9},{"movie_id":1293,"title":"Star Kid (1997)","predicted_rating":4.8},{"movie_id":1449,"title":"Pather Panchali (1955)","predicted_rating":4.78},{"movie_id":1398,"title":"Anna (1996)","predicted_rating":4.77}],"2":[{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":5},{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":5},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":5},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":5},{"movie_id":1642,"title":"Some Mother's Son (1996)","predicted_rating":5},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":5},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":5},{"movie_id":1449,"title":"Pather Panchali (1955)","predicted_rating":4.88},{"movie_id":1293,"title":"Star Kid (1997)","predicted_rating":4.88},{"movie_id":1398,"title":"Anna (1996)","predicted_rating":4.87}],"3":[{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":4.7},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":4.5},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":4.29},{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":4.28},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":4.21},{"movie_id":1642,"title":"Some Mother's Son (1996)","predicted_rating":4.1},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":4.09},{"movie_id":1449,"title":"Pather Panchali (1955)","predicted_rating":4.0},{"movie_id":1293,"title":"Star Kid (1997)","predicted_rating":3.97},{"movie_id":1398,"title":"Anna (1996)","predicted_rating":3.96}],"4":[{"movie_id":515,"title":"Boot, Das (1981)","predicted_rating":5},{"movie_id":272,"title":"Good Will Hunting (1997)","predicted_rating":5},{"movie_id":483,"title":"Casablanca (1942)","predicted_rating":5},{"movie_id":408,"title":"Close Shave, A (1995)","predicted_rating":5},{"movie_id":178,"title":"12 Angry Men (1957)","predicted_rating":5},{"movie_id":318,"title":"Schindler's List (1993)","predicted_rating":5},{"movie_id":64,"title":"Shawshank Redemption, The (1994)","predicted_rating":5},{"movie_id":169,"title":"Wrong Trousers, The (1993)","predicted_rating":5},{"movie_id":251,"title":"Shall We Dance? (1996)","predicted_rating":5},{"movie_id":114,"title":"Wallace & Gromit: The Best of Aardman Animation (1996)","predicted_rating":5}],"5":[{"movie_id":814,"title":"Great Day in Harlem, A (1994)","predicted_rating":4.78},{"movie_id":1536,"title":"Aiqing wansui (1994)","predicted_rating":4.58},{"movie_id":1467,"title":"Saint of Fort Washington, The (1993)","predicted_rating":4.37},{"movie_id":1500,"title":"Santa with Muscles (1996)","predicted_rating":4.34},{"movie_id":1599,"title":"Someone Else's America (1995)","predicted_rating":4.29},{"movie_id":1463,"title":"Boys, Les (1997)","predicted_rating":4.18},{"movie_id":1642,"title":"Some Mother's Son (1996)","predicted_rating":4.17},{"movie_id":1653,"title":"Entertaining Angels: The Dorothy Day Story (1996)","predicted_rating":4.17},{"movie_id":1233,"title":"N\u00e9nette et Boni (1996)","predicted_rating":4.07},{"movie_id":1449,"title":"Pather Panchali (1955)","predicted_rating":4.05}]},"model_path":"/Users/chelseatroy/teaching/applied-data-analysis/week_7/netflix_adventure/flask_app/models/recommender_knn_means_k80.pkl"},"__meta__":{"n_users":943,"n_movies":1682,"n_ratings":100000,"rating_counts":{"1":6110,"2":11370,"3":27145,"4":34174,"5":21201},"sample_users":[1,2,3,4,5],"sample_actuals":{"1":[{"movie_id":170,"title":"Cinema Paradiso (1988)","rating":5},{"movie_id":175,"title":"Brazil (1985)","rating":5},{"movie_id":119,"title":"Maya Lin: A Strong Clear Vision (1994)","rating":5},{"movie_id":181,"title":"Return of the Jedi (1983)","rating":5},{"movie_id":109,"title":"Mystery Science Theater 3000: The Movie (1996)","rating":5},{"movie_id":44,"title":"Dolores Claiborne (1994)","rating":5},{"movie_id":14,"title":"Postino, Il (1994)","rating":5},{"movie_id":12,"title":"Usual Suspects, The (1995)","rating":5},{"movie_id":223,"title":"Sling Blade (1996)","rating":5},{"movie_id":108,"title":"Kids in the Hall: Brain Candy (1996)","rating":5}],"2":[{"movie_id":311,"title":"Wings of the Dove, The (1997)","rating":5},{"movie_id":272,"title":"Good Will Hunting (1997)","rating":5},{"movie_id":242,"title":"Kolya (1996)","rating":5},{"movie_id":283,"title":"Emma (1996)","rating":5},{"movie_id":127,"title":"Godfather, The (1972)","rating":5},{"movie_id":285,"title":"Secrets & Lies (1996)","rating":5},{"movie_id":251,"title":"Shall We Dance? (1996)","rating":5},{"movie_id":313,"title":"Titanic (1997)","rating":5},{"movie_id":316,"title":"As Good As It Gets (1997)","rating":5},{"movie_id":100,"title":"Fargo (1996)","rating":5}],"3":[{"movie_id":346,"title":"Jackie Brown (1997)","rating":5},{"movie_id":340,"title":"Boogie Nights (1997)","rating":5},{"movie_id":347,"title":"Wag the Dog (1997)","rating":5},{"movie_id":328,"title":"Conspiracy Theory (1997)","rating":5},{"movie_id":320,"title":"Paradise Lost: The Child Murders at Robin Hood Hills (1996)","rating":5},{"movie_id":321,"title":"Mother (1996)","rating":5},{"movie_id":348,"title":"Desperate Measures (1998)","rating":4},{"movie_id":344,"title":"Apostle, The (1997)","rating":4},{"movie_id":181,"title":"Return of the Jedi (1983)","rating":4},{"movie_id":329,"title":"Desperate Measures (1998)","rating":4}],"4":[{"movie_id":301,"title":"In & Out (1997)","rating":5},{"movie_id":359,"title":"Assignment, The (1997)","rating":5},{"movie_id":327,"title":"Cop Land (1997)","rating":5},{"movie_id":329,"title":"Desperate Measures (1998)","rating":5},{"movie_id":362,"title":"Blues Brothers 2000 (1998)","rating":5},{"movie_id":258,"title":"Contact (1997)","rating":5},{"movie_id":303,"title":"Ulee's Gold (1997)","rating":5},{"movie_id":300,"title":"Air Force One (1997)","rating":5},{"movie_id":354,"title":"Wedding Singer, The (1998)","rating":5},{"movie_id":50,"title":"Star Wars (1977)","rating":5}],"5":[{"movie_id":174,"title":"Raiders of the Lost Ark (1981)","rating":5},{"movie_id":181,"title":"Return of the Jedi (1983)","rating":5},{"movie_id":153,"title":"Fish Called Wanda, A (1988)","rating":5},{"movie_id":396,"title":"Serial Mom (1994)","rating":5},{"movie_id":42,"title":"Clerks (1994)","rating":5},{"movie_id":436,"title":"American Werewolf in London, An (1981)","rating":5},{"movie_id":169,"title":"Wrong Trousers, The (1993)","rating":5},{"movie_id":100,"title":"Fargo (1996)","rating":5},{"movie_id":172,"title":"Empire Strikes Back, The (1980)","rating":5},{"movie_id":408,"title":"Close Shave, A (1995)","rating":5}]},"models":{"svd_f20":{"label":"SVD (20 factors)","family":"svd","param":"n_factors","param_val":20},"svd_f50":{"label":"SVD (50 factors)","family":"svd","param":"n_factors","param_val":50},"svd_f100":{"label":"SVD (100 factors)","family":"svd","param":"n_factors","param_val":100},"knn_basic_k20":{"label":"KNN Basic (k=20)","family":"knn_basic","param":"k","param_val":20},"knn_basic_k40":{"label":"KNN Basic (k=40)","family":"knn_basic","param":"k","param_val":40},"knn_basic_k80":{"label":"KNN Basic (k=80)","family":"knn_basic","param":"k","param_val":80},"knn_means_k20":{"label":"KNN+Means (k=20)","family":"knn_means","param":"k","param_val":20},"knn_means_k40":{"label":"KNN+Means (k=40)","family":"knn_means","param":"k","param_val":40},"knn_means_k80":{"label":"KNN+Means (k=80)","family":"knn_means","param":"k","param_val":80}}}};
+
+// ---------------------------------------------------------------------------
+// Tooltip system
+// ---------------------------------------------------------------------------
+const TIPS = {
+  cf:              "Collaborative filtering predicts what you'll like based on what similar users liked — no knowledge of the movie's content (genre, director, etc.) needed.",
+  svd:             "Singular Value Decomposition. Factorizes the ratings matrix into two smaller matrices: one for users and one for items. Each row is a vector of latent factors; predicted rating = dot product.",
+  latent_factors:  "Hidden numerical dimensions that capture abstract taste dimensions. You can think of them as (roughly) things like 'preference for action' or 'taste for art-house films', though they aren't directly interpretable.",
+  knn_cf:          "K-Nearest Neighbors collaborative filtering. To predict user u's rating for item i, find k users most similar to u who have rated i, then aggregate their ratings.",
+  cosine_sim:      "Cosine similarity measures the angle between two rating vectors. Two users are similar if they rate the same movies high or low, regardless of their absolute rating levels.",
+  rating_bias:     "Some users rate everything 4–5 stars; others never go above 3. Mean normalization subtracts each user's average before comparing, so the comparison is about relative preference rather than scale.",
+  n_factors:       "The number of latent dimensions in the SVD factorization. More factors = more expressive model, but risks overfitting on small datasets.",
+  k_neighbors:     "How many similar users to consult when making a prediction. More neighbors = smoother (less noisy) predictions but can dilute the signal from your closest matches.",
+  rmse:            "Root Mean Squared Error. Average prediction error in rating units (1–5 scale). An RMSE of 0.93 means predictions are off by ~0.93 stars on average — larger errors are penalized more than smaller ones.",
+  mae:             "Mean Absolute Error. Average absolute prediction error. Less sensitive to large errors than RMSE. An MAE of 0.74 means predictions are off by ~0.74 stars on average.",
+  cv5:             "5-fold cross-validation: the dataset is split into 5 equal parts. The model trains on 4 parts and is evaluated on the 5th, rotating through all combinations. Gives a reliable estimate of generalization error.",
+  sparsity:        "A matrix is sparse when most of its cells are empty. Most users have rated only ~100 of 1,682 movies (~6%), so 94% of cells are unknown.",
+  cold_start:      "The cold-start problem: a new user with no ratings can't be compared to anyone. Collaborative filtering requires a history to make recommendations.",
+  metaflow:        "Metaflow is Netflix's open-source ML pipeline framework. Each 'flow' is a Python class whose methods are steps — Metaflow runs them in order, stores every artifact, and records full run history so pipelines are reproducible and auditable.",
+};
+
+const tipEl = document.getElementById("tooltip");
+document.addEventListener("mousemove", e => {
+  tipEl.style.left = (e.clientX + 14) + "px";
+  tipEl.style.top  = (e.clientY + 14) + "px";
+});
+document.addEventListener("mouseover", e => {
+  const el = e.target.closest("[data-tip]");
+  if (el) { tipEl.textContent = TIPS[el.dataset.tip] || el.dataset.tip; tipEl.style.display = "block"; }
+});
+document.addEventListener("mouseout", e => {
+  if (!e.target.closest("[data-tip]")) tipEl.style.display = "none";
+});
+
+// ---------------------------------------------------------------------------
+// Algorithm family metadata
+// ---------------------------------------------------------------------------
+const ALGO_FAMILIES = {
+  svd: {
+    detail: "SVD learns a low-rank approximation of the ratings matrix. Each user and movie gets a vector of latent factors; the dot product of a user vector and a movie vector is the predicted rating. Training optimizes these vectors to minimize prediction error across known ratings.",
+    param_heading: "How many latent factors?",
+    param_intro: "More factors capture finer taste distinctions, but too many can overfit — especially on sparse data.",
+    params: [
+      { key: "svd_f20",  label: "20 factors", desc: "Compact model. Fast, less likely to overfit, but may miss subtle taste dimensions." },
+      { key: "svd_f50",  label: "50 factors", desc: "Balanced default. Expressive enough for most recommendation tasks." },
+      { key: "svd_f100", label: "100 factors", desc: "High expressiveness. May slightly overfit on this 100K dataset." },
+    ],
+  },
+  knn_basic: {
+    detail: "KNN Basic finds the k users most similar to you (by cosine similarity of your rating vectors), then predicts your rating for unseen movies as a weighted average of what those k users rated it.",
+    param_heading: "How many neighbors (k)?",
+    param_intro: "More neighbors smooth out individual noise but may include less relevant users.",
+    params: [
+      { key: "knn_basic_k20", label: "k = 20", desc: "Few neighbors — predictions driven by your closest matches." },
+      { key: "knn_basic_k40", label: "k = 40", desc: "Balanced. A good default for this dataset size." },
+      { key: "knn_basic_k80", label: "k = 80", desc: "Many neighbors — smoother predictions, but distant users get included." },
+    ],
+  },
+  knn_means: {
+    detail: "KNN+Means works like KNN Basic, but subtracts each user's mean rating before computing similarity. This corrects for rating-scale bias: a generous rater (always gives 4–5) and a harsh rater (usually gives 2–3) who agree on the ranking of movies will now look similar.",
+    param_heading: "How many neighbors (k)?",
+    param_intro: "Same tradeoff as KNN Basic: more neighbors = smoother but potentially noisier predictions.",
+    params: [
+      { key: "knn_means_k20", label: "k = 20", desc: "Few neighbors — predictions driven by your closest matches." },
+      { key: "knn_means_k40", label: "k = 40", desc: "Balanced. A good default for this dataset size." },
+      { key: "knn_means_k80", label: "k = 80", desc: "Many neighbors — smoother predictions, but distant users get included." },
+    ],
+  },
+};
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+let state = { family: null, model_key: null, sample_user: "1", currentStep: 0 };
+const TOTAL_STEPS = 7;
+
+function goTo(n) {
+  document.getElementById(`step-${state.currentStep}`).classList.remove("active");
+  state.currentStep = n;
+  document.getElementById(`step-${n}`).classList.add("active");
+  document.getElementById("progress").style.width = `${(n / (TOTAL_STEPS - 1)) * 100}%`;
+  if (n === 1) renderExplore();
+  if (n === 3) renderParamStep();
+  if (n === 4) renderResults();
+  if (n === 5) renderRecs();
+  if (n === 6) renderDownload();
+  window.scrollTo(0, 0);
+}
+
+// ---------------------------------------------------------------------------
+// Step 1: Explore
+// ---------------------------------------------------------------------------
+function renderExplore() {
+  const meta = DATA.__meta__;
+  const density = (meta.n_ratings / (meta.n_users * meta.n_movies) * 100).toFixed(2);
+  document.getElementById("stat-row").innerHTML = [
+    { num: meta.n_users.toLocaleString(),   lbl: "Users" },
+    { num: meta.n_movies.toLocaleString(),  lbl: "Movies" },
+    { num: meta.n_ratings.toLocaleString(), lbl: "Ratings" },
+    { num: density + "%",                   lbl: "Matrix density" },
+  ].map(s => `<div class="stat-card"><div class="num">${s.num}</div><div class="lbl">${s.lbl}</div></div>`).join("");
+
+  const counts = meta.rating_counts;
+  const max = Math.max(...Object.values(counts));
+  document.getElementById("rating-dist").innerHTML = Object.entries(counts).map(([r, c]) => `
+    <div class="bar-row">
+      <div class="bar-label">&#9733; ${r}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(c/max)*100}%"></div></div>
+      <div class="bar-value">${c.toLocaleString()}</div>
+    </div>`).join("");
+
+  document.getElementById("sparsity-box").textContent =
+    `Matrix size : ${meta.n_users} users × ${meta.n_movies} movies = ${(meta.n_users*meta.n_movies).toLocaleString()} cells
+` +
+    `Ratings filled: ${meta.n_ratings.toLocaleString()} (${density}%)
+` +
+    `Empty cells  : ${(meta.n_users*meta.n_movies - meta.n_ratings).toLocaleString()} (${(100-parseFloat(density)).toFixed(2)}%)`;
+}
+
+// ---------------------------------------------------------------------------
+// Step 2: Choose family
+// ---------------------------------------------------------------------------
+function chooseFamily(family, btn) {
+  state.family = family;
+  state.model_key = null;
+  document.querySelectorAll('#step-2 .choice-btn').forEach(b => b.classList.remove("selected"));
+  btn.classList.add("selected");
+  const info = ALGO_FAMILIES[family];
+  const card = document.getElementById("family-card");
+  card.style.display = "block";
+  document.getElementById("family-detail").textContent = info.detail;
+  document.getElementById("family-next").disabled = false;
+}
+
+// ---------------------------------------------------------------------------
+// Step 3: Choose hyperparameter
+// ---------------------------------------------------------------------------
+function renderParamStep() {
+  if (!state.family) return;
+  const info = ALGO_FAMILIES[state.family];
+  document.getElementById("param-heading").textContent = info.param_heading;
+  document.getElementById("param-intro").textContent = info.param_intro;
+  const grid = document.getElementById("param-grid");
+  grid.innerHTML = info.params.map(p => `
+    <button class="choice-btn ${state.model_key === p.key ? 'selected' : ''}"
+            onclick="chooseParam('${p.key}', this)">
+      <div class="label">${p.label}</div>
+      <div class="desc">${p.desc}</div>
+    </button>`).join("");
+  if (!state.model_key) {
+    document.getElementById("param-next").disabled = true;
+    document.getElementById("param-card").style.display = "none";
+  }
+}
+
+function chooseParam(key, btn) {
+  state.model_key = key;
+  document.querySelectorAll('#param-grid .choice-btn').forEach(b => b.classList.remove("selected"));
+  btn.classList.add("selected");
+  const entry = DATA[key];
+  if (entry) {
+    const card = document.getElementById("param-card");
+    card.style.display = "block";
+    document.getElementById("param-detail").textContent =
+      `Precomputed RMSE: ${entry.rmse}  |  MAE: ${entry.mae}  |  CV time: ${entry.training_time}s`;
+  }
+  document.getElementById("param-next").disabled = false;
+}
+
+// ---------------------------------------------------------------------------
+// Step 4: Results
+// ---------------------------------------------------------------------------
+function renderResults() {
+  const entry = DATA[state.model_key];
+  if (!entry) return;
+  const meta = DATA.__meta__;
+
+  document.getElementById("metric-row").innerHTML = `
+    <div class="metric-card">
+      <div class="num">${entry.rmse}</div>
+      <div class="lbl"><span class="tip" data-tip="rmse">RMSE</span> (5-fold CV)</div>
+    </div>
+    <div class="metric-card">
+      <div class="num">${entry.mae}</div>
+      <div class="lbl"><span class="tip" data-tip="mae">MAE</span> (5-fold CV)</div>
+    </div>`;
+
+  // Comparison bar chart: all models sorted by RMSE ascending
+  const allModels = Object.entries(meta.models)
+    .map(([k, info]) => ({ key: k, label: info.label, rmse: DATA[k] ? DATA[k].rmse : null }))
+    .filter(m => m.rmse !== null)
+    .sort((a, b) => a.rmse - b.rmse);
+
+  const maxRmse = Math.max(...allModels.map(m => m.rmse));
+  const minRmse = Math.min(...allModels.map(m => m.rmse));
+  const range = maxRmse - minRmse || 0.01;
+
+  document.getElementById("rmse-compare").innerHTML = allModels.map(m => {
+    const isChosen = m.key === state.model_key;
+    const barW = 30 + ((maxRmse - m.rmse) / range) * 70;
+    return `<div class="bar-row">
+      <div class="bar-label ${isChosen ? 'highlight' : ''}">${m.label}</div>
+      <div class="bar-track">
+        <div class="bar-fill ${isChosen ? 'highlight' : ''}" style="width:${barW.toFixed(1)}%"></div>
+      </div>
+      <div class="bar-value ${isChosen ? 'good' : ''}">${m.rmse}</div>
+    </div>`;
+  }).join("");
+
+  // Insight card
+  const insight = document.getElementById("rmse-insight");
+  const starDiff = entry.rmse.toFixed(2);
+  insight.innerHTML = `<p>Your model predicts ratings within about <strong>${starDiff} stars</strong> on average.
+    On a 1–5 scale, this means if a movie is truly a 4-star film for this user, the model might
+    predict anywhere from ${(4 - entry.rmse).toFixed(1)} to ${Math.min(5, 4 + entry.rmse).toFixed(1)}.</p>
+    <br>
+    <p style="font-size:0.85rem;color:#8b949e">
+      Industry CF models typically achieve RMSE ~0.85–1.0 on MovieLens 100K.
+      Netflix's own model was reportedly ~0.85. The bar chart above is inverted — shorter bars
+      represent higher RMSE (worse). Your chosen model is highlighted in green.
+    </p>`;
+}
+
+// ---------------------------------------------------------------------------
+// Step 5: Sample recommendations
+// ---------------------------------------------------------------------------
+function renderRecs() {
+  const meta = DATA.__meta__;
+  const pills = document.getElementById("user-pills");
+  pills.innerHTML = meta.sample_users.map(uid =>
+    `<button class="user-pill ${state.sample_user === String(uid) ? 'selected' : ''}"
+             onclick="selectUser('${uid}', this)">User ${uid}</button>`
+  ).join("");
+  renderRecLists();
+}
+
+function selectUser(uid, btn) {
+  state.sample_user = String(uid);
+  document.querySelectorAll('.user-pill').forEach(b => b.classList.remove("selected"));
+  btn.classList.add("selected");
+  renderRecLists();
+}
+
+function renderRecLists() {
+  const uid = state.sample_user;
+  const actuals = DATA.__meta__.sample_actuals[uid] || [];
+  const recs = DATA[state.model_key]?.sample_recs[uid] || [];
+
+  document.getElementById("actual-list").innerHTML = actuals.map((m, i) =>
+    `<li class="rec-item">
+      <span class="rec-rank">${i+1}.</span>
+      <span class="rec-title">${m.title}</span>
+      <span class="rec-score actual">${"★".repeat(m.rating)}</span>
+    </li>`
+  ).join("");
+
+  document.getElementById("recs-list").innerHTML = recs.map((m, i) =>
+    `<li class="rec-item">
+      <span class="rec-rank">${i+1}.</span>
+      <span class="rec-title">${m.title}</span>
+      <span class="rec-score predicted">${m.predicted_rating}</span>
+    </li>`
+  ).join("");
+}
+
+// ---------------------------------------------------------------------------
+// Step 6: Deploy
+// ---------------------------------------------------------------------------
+function renderDownload() {
+  const entry = DATA[state.model_key];
+  const meta = DATA.__meta__;
+  document.getElementById("summary-algo").textContent =
+    meta.models[state.model_key]?.label || state.model_key;
+  document.getElementById("summary-rmse").textContent = entry?.rmse ?? "N/A";
+  document.getElementById("summary-mae").textContent  = entry?.mae  ?? "N/A";
+  document.getElementById("deploy-cmd").textContent =
+    `python recommender_flow.py run --model_key ${state.model_key}`;
+}
+
+function copyCmd() {
+  const cmd = document.getElementById("deploy-cmd").textContent;
+  navigator.clipboard.writeText(cmd).then(() => {
+    const btn = document.getElementById("copy-btn");
+    btn.textContent = "Copied!";
+    setTimeout(() => btn.textContent = "Copy", 1500);
+  });
+}
+</script>
+</body>
+</html>

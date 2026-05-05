@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How Random Forest Learns — Step by Step</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, sans-serif;
+  background: #f0f7f4; color: #1a3a2a; min-height: 100vh;
+}
+header {
+  background: linear-gradient(135deg, #0d4a3a, #1a8a5a);
+  color: white; padding: 18px 36px;
+  display: flex; justify-content: space-between; align-items: center;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+}
+header h1 { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.3px; }
+#step-counter {
+  background: rgba(255,255,255,0.18); padding: 5px 16px;
+  border-radius: 20px; font-size: 0.88rem; font-weight: 600;
+}
+.content { max-width: 1120px; margin: 0 auto; padding: 20px 24px 80px; }
+.main-row { display: flex; gap: 20px; margin-bottom: 20px; align-items: stretch; }
+.panel {
+  background: #ffffff; border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.1); overflow: hidden;
+}
+.panel-header {
+  background: #d0ede0; border-bottom: 1px solid #a0c8b0;
+  padding: 10px 18px; font-size: 0.75rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em; color: #0d4a3a;
+}
+#plot-panel { flex: 0 0 440px; }
+#plot-panel svg { display: block; }
+#explain-panel { flex: 1; display: flex; flex-direction: column; }
+#explain-content { padding: 18px 22px; flex: 1; }
+#step-title { font-size: 1.18rem; font-weight: 700; color: #0d4a3a; margin-bottom: 13px; line-height: 1.3; }
+#step-body { font-size: 0.93rem; line-height: 1.75; color: #2a4a3a; }
+#step-body p { margin-bottom: 11px; }
+#step-body ul, #step-body ol { margin: 6px 0 11px 22px; }
+#step-body li { margin-bottom: 3px; }
+.math-block {
+  background: #e8f5ee; border-left: 3px solid #1a7a5a;
+  padding: 11px 15px; margin: 11px 0;
+  font-family: 'Menlo', 'Courier New', monospace;
+  font-size: 0.85rem; line-height: 1.85; border-radius: 0 6px 6px 0; color: #0d4a3a;
+}
+.good { color: #1a7840; font-weight: 700; }
+.bad  { color: #c03030; font-weight: 700; }
+.hl   { color: #0d5a3a; font-weight: 700; }
+.callout {
+  background: #e0f0e8; border-radius: 8px; padding: 9px 14px;
+  margin-top: 10px; font-size: 0.88rem; color: #0d4a3a; line-height: 1.6;
+}
+.tag-b { display: inline-block; background: #3b82f6; color: white; padding: 1px 7px; border-radius: 4px; font-size: 0.8rem; font-weight: 700; }
+.tag-r { display: inline-block; background: #e05252; color: white; padding: 1px 7px; border-radius: 4px; font-size: 0.8rem; font-weight: 700; }
+#forest-panel { margin-bottom: 20px; }
+.nav-bar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  display: flex; justify-content: center; align-items: center; gap: 20px;
+  padding: 12px 0 16px; background: #f0f7f4;
+  border-top: 1px solid #a0c8b0; z-index: 100;
+}
+.nav-bar button {
+  background: #1a7a5a; color: white; border: none;
+  padding: 11px 30px; font-size: 0.97rem; font-weight: 600;
+  border-radius: 8px; cursor: pointer; transition: background 0.15s, transform 0.1s;
+}
+.nav-bar button:hover { background: #0d5a3a; transform: translateY(-1px); }
+.nav-bar button:disabled { background: #a0c8b0; cursor: default; transform: none; }
+.dots { display: flex; gap: 7px; align-items: center; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: #d0e8d8; transition: background 0.2s; }
+.dot.active { background: #1a7a5a; transform: scale(1.3); }
+.dot.done   { background: #4aaa7a; }
+
+.bs-btn {
+  padding: 5px 13px; border: 2px solid #1a7a5a; border-radius: 6px;
+  background: #e8f5ee; color: #0d4a3a; font-size: 0.82rem; font-weight: 600;
+  cursor: pointer; transition: all 0.15s; margin-right: 6px;
+}
+.bs-btn:hover  { background: #c0e8d0; }
+.bs-btn.active { background: #1a7a5a; color: white; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Random Forest — Training Walkthrough</h1>
+  <div id="step-counter">Step 1 of 10</div>
+</header>
+
+<div class="content">
+  <div class="main-row">
+    <div class="panel" id="plot-panel">
+      <div class="panel-header" id="plot-label">Feature Space</div>
+      <svg id="plot" viewBox="0 0 440 415" height="415"></svg>
+    </div>
+    <div class="panel" id="explain-panel">
+      <div class="panel-header">What the Algorithm Is Doing</div>
+      <div id="explain-content">
+        <div id="step-title"></div>
+        <div id="step-body"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="forest-panel">
+    <div class="panel-header">Forest So Far</div>
+    <svg id="forest" viewBox="0 0 1060 130" height="130" style="width:100%"></svg>
+  </div>
+
+  <div class="nav-bar">
+    <button id="prev-btn" onclick="changeStep(-1)" disabled>← Previous</button>
+    <div class="dots" id="dots"></div>
+    <button id="next-btn" onclick="changeStep(1)">Next →</button>
+  </div>
+</div>
+
+<script>
+// ─── Dataset ─────────────────────────────────────────────────────────────────
+// Same 8-point dataset as AdaBoost/XGBoost walkthroughs.
+// P4=(5,7) is the tricky blue outlier surrounded by red points.
+const PTS = [
+  {id:1, x:1, y:6, cls:'blue'},
+  {id:2, x:2, y:7, cls:'blue'},
+  {id:3, x:1, y:4, cls:'blue'},
+  {id:4, x:5, y:7, cls:'blue'},  // outlier
+  {id:5, x:5, y:2, cls:'red'},
+  {id:6, x:6, y:3, cls:'red'},
+  {id:7, x:7, y:4, cls:'red'},
+  {id:8, x:6, y:5, cls:'red'},
+];
+
+// Bootstrap samples (point IDs, with duplicates — 8 draws with replacement)
+const BOOTS = {
+  B1: [1,1,2,3,5,6,7,6],  // P4, P8 are OOB
+  B2: [1,2,4,4,5,6,8,8],  // P3, P7 are OOB
+  B3: [2,3,3,4,5,7,8,8],  // P1, P6 are OOB
+};
+const OOB_IDS = {
+  B1: new Set([4, 8]),
+  B2: new Set([3, 7]),
+  B3: new Set([1, 6]),
+};
+
+// Decision regions: {x1,y1,x2,y2} in data coords, cls = 'blue'|'red'
+// All regions cover [0,9]×[0,9] data space
+const REGIONS = {
+  // Single deep tree: x1≤3.5→blue; x1>3.5,y>5.5→blue; else red
+  deep: [
+    {x1:0, y1:0, x2:3.5, y2:9, cls:'blue'},
+    {x1:3.5, y1:5.5, x2:9, y2:9, cls:'blue'},
+    {x1:3.5, y1:0,   x2:9, y2:5.5, cls:'red'},
+  ],
+  // Tree 1 (no P4): simple split x1=3.5
+  tree1: [
+    {x1:0,   y1:0, x2:3.5, y2:9, cls:'blue'},
+    {x1:3.5, y1:0, x2:9,   y2:9, cls:'red'},
+  ],
+  // Tree 2 (feature=x2 only): x2>5.5→blue
+  tree2: [
+    {x1:0, y1:5.5, x2:9, y2:9, cls:'blue'},
+    {x1:0, y1:0,   x2:9, y2:5.5, cls:'red'},
+  ],
+  // Tree 3: x1≤3.5→blue; x1>3.5,y>5.5→blue; else red
+  tree3: [
+    {x1:0,   y1:0,   x2:3.5, y2:9,   cls:'blue'},
+    {x1:3.5, y1:5.5, x2:9,   y2:9,   cls:'blue'},
+    {x1:3.5, y1:0,   x2:9,   y2:5.5, cls:'red'},
+  ],
+  // Ensemble (majority vote of tree1+tree2+tree3):
+  // x1≤3.5: T1=blue,T3=blue → blue (regardless of T2)
+  // x1>3.5, y>5.5: T2=blue,T3=blue → blue (T1=red, 2-1)
+  // x1>3.5, y≤5.5: T1=red,T2=red,T3=red → red (3-0)
+  ensemble: [
+    {x1:0,   y1:0,   x2:3.5, y2:9,   cls:'blue'},
+    {x1:3.5, y1:5.5, x2:9,   y2:9,   cls:'blue'},
+    {x1:3.5, y1:0,   x2:9,   y2:5.5, cls:'red'},
+  ],
+};
+
+// Split lines: {axis:'v'|'h', val:number, xmin?:number, xmax?:number, ymin?:number, ymax?:number}
+const SPLITS = {
+  deep:     [{axis:'v', val:3.5}, {axis:'h', val:5.5, xmin:3.5, xmax:9}],
+  tree1:    [{axis:'v', val:3.5}],
+  tree2:    [{axis:'h', val:5.5}],
+  tree3:    [{axis:'v', val:3.5}, {axis:'h', val:5.5, xmin:3.5, xmax:9}],
+  ensemble: [{axis:'v', val:3.5}, {axis:'h', val:5.5, xmin:3.5, xmax:9}],
+};
+
+// ─── SVG helpers ──────────────────────────────────────────────────────────────
+const VB_W=440, VB_H=415;
+const PAD = {l:38, r:16, t:14, b:38};
+const DW = VB_W - PAD.l - PAD.r;
+const DH = VB_H - PAD.t - PAD.b;
+
+function toX(x) { return PAD.l + (x/9)*DW; }
+function toY(y) { return VB_H - PAD.b - (y/9)*DH; }
+
+function drawAxes(svg) {
+  for (let v=0; v<=9; v++) {
+    const sx = toX(v), sy = toY(v);
+    svg.insertAdjacentHTML('beforeend',
+      `<line x1="${sx}" y1="${PAD.t}" x2="${sx}" y2="${VB_H-PAD.b}"
+             stroke="#ccc" stroke-width="${v%3===0?1:0.5}"/>`+
+      `<text x="${sx}" y="${VB_H-PAD.b+16}" text-anchor="middle"
+             font-size="11" fill="#888">${v}</text>`+
+      `<line x1="${PAD.l}" y1="${sy}" x2="${VB_W-PAD.r}" y2="${sy}"
+             stroke="#ccc" stroke-width="${v%3===0?1:0.5}"/>`+
+      `<text x="${PAD.l-4}" y="${sy+4}" text-anchor="end"
+             font-size="11" fill="#888">${v}</text>`);
+  }
+  // axis labels
+  svg.insertAdjacentHTML('beforeend',
+    `<text x="${PAD.l+DW/2}" y="${VB_H-2}" text-anchor="middle"
+           font-size="12" fill="#555" font-style="italic">x₁</text>`+
+    `<text x="10" y="${PAD.t+DH/2}" text-anchor="middle"
+           font-size="12" fill="#555" font-style="italic"
+           transform="rotate(-90,10,${PAD.t+DH/2})">x₂</text>`);
+}
+
+function drawRegions(svg, regKey) {
+  for (const r of REGIONS[regKey]) {
+    const sx = toX(r.x1), sy = toY(r.y2);
+    const sw = toX(r.x2)-toX(r.x1), sh = toY(r.y1)-toY(r.y2);
+    const fill = r.cls==='blue' ? '#3b82f6' : '#ef4444';
+    svg.insertAdjacentHTML('beforeend',
+      `<rect x="${sx}" y="${sy}" width="${sw}" height="${sh}"
+             fill="${fill}" opacity="0.14" rx="0"/>`);
+  }
+}
+
+function drawSplits(svg, splitsKey) {
+  for (const s of SPLITS[splitsKey]) {
+    if (s.axis==='v') {
+      const sx=toX(s.val);
+      const y1 = s.ymin!=null ? toY(s.ymin) : PAD.t;
+      const y2 = s.ymax!=null ? toY(s.ymax) : VB_H-PAD.b;
+      svg.insertAdjacentHTML('beforeend',
+        `<line x1="${sx}" y1="${y1}" x2="${sx}" y2="${y2}"
+               stroke="#fff" stroke-width="2"/>`);
+    } else {
+      const sy=toY(s.val);
+      const x1 = s.xmin!=null ? toX(s.xmin) : PAD.l;
+      const x2 = s.xmax!=null ? toX(s.xmax) : VB_W-PAD.r;
+      svg.insertAdjacentHTML('beforeend',
+        `<line x1="${x1}" y1="${sy}" x2="${x2}" y2="${sy}"
+               stroke="#fff" stroke-width="2"/>`);
+    }
+  }
+}
+
+function drawPoints(svg, oobSet=null, highlightId=null, bootSample=null) {
+  for (const pt of PTS) {
+    const sx=toX(pt.x), sy=toY(pt.y);
+    const isOOB = oobSet && oobSet.has(pt.id);
+    const isHL  = pt.id===highlightId;
+    const fill  = isOOB ? '#999' : (pt.cls==='blue' ? '#3b82f6' : '#ef4444');
+    const stroke = isHL ? '#f9e2af' : (isOOB ? '#666' : '#fff');
+    const sw = isHL ? 2.5 : 1.5;
+    const op = isOOB ? 0.35 : 1;
+    const r  = isHL ? 11 : 9;
+
+    if (isHL) {
+      svg.insertAdjacentHTML('beforeend',
+        `<circle cx="${sx}" cy="${sy}" r="${r+6}" fill="none"
+                 stroke="#f9e2af" stroke-width="2" stroke-dasharray="4,3"/>`);
+    }
+    svg.insertAdjacentHTML('beforeend',
+      `<circle cx="${sx}" cy="${sy}" r="${r}"
+               fill="${fill}" stroke="${stroke}" stroke-width="${sw}"
+               opacity="${op}"/>`);
+
+    // show duplicate count from bootstrap
+    if (bootSample) {
+      const count = bootSample.filter(id=>id===pt.id).length;
+      if (count>1 && !isOOB) {
+        svg.insertAdjacentHTML('beforeend',
+          `<text x="${sx}" y="${sy+4}" text-anchor="middle"
+                 font-size="9" fill="white" font-weight="700">×${count}</text>`);
+      }
+    }
+
+    // OOB badge
+    if (isOOB) {
+      svg.insertAdjacentHTML('beforeend',
+        `<text x="${sx}" y="${sy-13}" text-anchor="middle"
+               font-size="9" fill="#888">OOB</text>`);
+    }
+
+    svg.insertAdjacentHTML('beforeend',
+      `<text x="${sx+13}" y="${sy+4}" font-size="10" fill="#aaa">P${pt.id}</text>`);
+  }
+}
+
+// ─── Plot render functions ────────────────────────────────────────────────────
+function clearPlot() { document.getElementById('plot').innerHTML=''; }
+
+function renderBase(regKey=null, splitsKey=null, oobSet=null, hlId=null, boot=null) {
+  clearPlot();
+  const svg=document.getElementById('plot');
+  if (regKey)    drawRegions(svg, regKey);
+  drawAxes(svg);
+  if (splitsKey) drawSplits(svg, splitsKey);
+  drawPoints(svg, oobSet, hlId, boot);
+}
+
+function renderData()       { renderBase(); }
+function renderDeepTree()   { renderBase('deep',     'deep',     null, 4); }
+function renderBoot(bKey)   { renderBase(null,        null,       OOB_IDS[bKey], null, BOOTS[bKey]); }
+function renderTree1()      { renderBase('tree1',    'tree1',    OOB_IDS.B1); }
+function renderTree2()      { renderBase('tree2',    'tree2',    OOB_IDS.B2); }
+function renderTree3()      { renderBase('tree3',    'tree3',    OOB_IDS.B3); }
+function renderEnsemble()   { renderBase('ensemble', 'ensemble', null,        4); }
+
+function renderOOB() {
+  renderBase('tree1', 'tree1', OOB_IDS.B1);
+  // annotate the OOB arrow — Tree 1 predicts red for P4, which is its OOB test point
+  const svg=document.getElementById('plot');
+  const sx=toX(PTS[3].x), sy=toY(PTS[3].y);  // P4
+  svg.insertAdjacentHTML('beforeend',
+    `<circle cx="${sx}" cy="${sy}" r="15" fill="none"
+             stroke="#f9e2af" stroke-width="2" stroke-dasharray="4,3"/>`+
+    `<text x="${sx+18}" y="${sy-14}" font-size="11" fill="#f9e2af" font-weight="600"
+           >OOB — free test!</text>`);
+  // P8 too
+  const sx8=toX(PTS[7].x), sy8=toY(PTS[7].y);
+  svg.insertAdjacentHTML('beforeend',
+    `<circle cx="${sx8}" cy="${sy8}" r="15" fill="none"
+             stroke="#f9e2af" stroke-width="2" stroke-dasharray="4,3"/>`);
+}
+
+function renderImportance() {
+  clearPlot();
+  const svg=document.getElementById('plot');
+  // Draw a horizontal bar chart for feature importances (x1=0.62, x2=0.38 — illustrative)
+  const importances = [{label:'x₁ (horizontal position)', val:0.62},
+                       {label:'x₂ (vertical position)',   val:0.38}];
+  svg.insertAdjacentHTML('beforeend',
+    `<text x="${VB_W/2}" y="40" text-anchor="middle"
+           font-size="14" font-weight="700" fill="#0d4a3a">Feature Importances</text>`+
+    `<text x="${VB_W/2}" y="58" text-anchor="middle"
+           font-size="11" fill="#888">(avg impurity reduction per split, across all trees)</text>`);
+
+  const barW=300, barX=PAD.l+20, barH=48, gap=36;
+  importances.forEach((fi, i) => {
+    const y = 90 + i*(barH+gap);
+    const fillW = fi.val * barW;
+    svg.insertAdjacentHTML('beforeend',
+      `<text x="${barX}" y="${y}" font-size="12" font-weight="600" fill="#1a3a2a"
+             >${fi.label}</text>`+
+      `<rect x="${barX}" y="${y+8}" width="${barW}" height="${barH}"
+             fill="#e0f0e8" rx="5"/>`+
+      `<rect x="${barX}" y="${y+8}" width="${fillW}" height="${barH}"
+             fill="#1a7a5a" rx="5"/>`+
+      `<text x="${barX+fillW+8}" y="${y+8+barH/2+5}"
+             font-size="14" font-weight="700" fill="#0d4a3a">${Math.round(fi.val*100)}%</text>`);
+  });
+
+  svg.insertAdjacentHTML('beforeend',
+    `<text x="${VB_W/2}" y="280" text-anchor="middle"
+           font-size="11" fill="#555">x₁ = 3.5 split appears in 2 of 3 trees</text>`+
+    `<text x="${VB_W/2}" y="298" text-anchor="middle"
+           font-size="11" fill="#555">x₂ = 5.5 split appears in 2 of 3 trees</text>`+
+    `<text x="${VB_W/2}" y="316" text-anchor="middle"
+           font-size="11" fill="#555">(x₁ slightly higher: first split in Tree 1 and Tree 3)</text>`);
+}
+
+// ─── Forest panel ─────────────────────────────────────────────────────────────
+const TREE_INFO = [
+  { bKey:'B1', oob:'P4, P8', rule:['x₁ ≤ 3.5  →  Blue','x₁ > 3.5  →  Red'],
+    voteP4:'red'  },
+  { bKey:'B2', oob:'P3, P7', rule:['x₂ > 5.5  →  Blue','x₂ ≤ 5.5  →  Red'],
+    voteP4:'blue' },
+  { bKey:'B3', oob:'P1, P6', rule:['x₁ ≤ 3.5  →  Blue','x₁>3.5, x₂>5.5 → Blue','else  →  Red'],
+    voteP4:'blue' },
+];
+
+function renderForest(numTrees, showVote=false) {
+  const svg=document.getElementById('forest');
+  svg.innerHTML='';
+
+  if (numTrees===0) {
+    svg.insertAdjacentHTML('beforeend',
+      `<text x="530" y="72" text-anchor="middle" font-size="15"
+             fill="#888">No trees trained yet</text>`);
+    return;
+  }
+
+  const cardW=285, cardH=108, gap=15;
+  const startX=18;
+
+  for (let i=0; i<numTrees; i++) {
+    const t=TREE_INFO[i];
+    const cx=startX+i*(cardW+gap);
+    const cy=11;
+
+    svg.insertAdjacentHTML('beforeend',
+      `<rect x="${cx}" y="${cy}" width="${cardW}" height="${cardH}" rx="8"
+             fill="#e8f5ee" stroke="#a0c8b0" stroke-width="1.5"/>`+
+      `<text x="${cx+12}" y="${cy+21}" font-size="13" font-weight="700"
+             fill="#0d4a3a">Tree ${i+1}</text>`+
+      `<text x="${cx+cardW-10}" y="${cy+21}" text-anchor="end" font-size="10"
+             fill="#666">OOB: ${t.oob}</text>`);
+
+    t.rule.forEach((line, j) => {
+      svg.insertAdjacentHTML('beforeend',
+        `<text x="${cx+12}" y="${cy+38+j*16}" font-size="11"
+               fill="#1a3a2a" font-family="monospace">${line}</text>`);
+    });
+
+    if (showVote) {
+      const voteColor=t.voteP4==='blue' ? '#3b82f6' : '#ef4444';
+      const voteLabel=t.voteP4==='blue' ? 'Blue' : 'Red';
+      svg.insertAdjacentHTML('beforeend',
+        `<circle cx="${cx+15}" cy="${cy+92}" r="7"
+                 fill="${voteColor}" stroke="#fff" stroke-width="1"/>`+
+        `<text x="${cx+26}" y="${cy+97}" font-size="11" font-weight="700"
+               fill="${voteColor}">P4 → ${voteLabel}</text>`);
+    }
+  }
+
+  // Ensemble vote column (only when all 3 trees + showVote)
+  if (numTrees===3 && showVote) {
+    const ex=startX+3*(cardW+gap)+8;
+    svg.insertAdjacentHTML('beforeend',
+      `<rect x="${ex}" y="11" width="145" height="108" rx="8"
+             fill="#d0ede0" stroke="#1a7a5a" stroke-width="2"/>`+
+      `<text x="${ex+72}" y="32" text-anchor="middle" font-size="13"
+             font-weight="700" fill="#0d4a3a">Ensemble</text>`+
+      `<text x="${ex+72}" y="52" text-anchor="middle" font-size="11"
+             fill="#1a3a2a">Votes on P4:</text>`+
+      `<text x="${ex+72}" y="68" text-anchor="middle" font-size="11"
+             fill="#ef4444">1× Red (Tree 1)</text>`+
+      `<text x="${ex+72}" y="84" text-anchor="middle" font-size="11"
+             fill="#3b82f6">2× Blue (Trees 2,3)</text>`+
+      `<text x="${ex+72}" y="104" text-anchor="middle" font-size="12"
+             font-weight="700" fill="#3b82f6">→ Blue ✓</text>`);
+  }
+}
+
+// ─── Step definitions ─────────────────────────────────────────────────────────
+let activeBoot='B1';
+
+const STEPS = [
+  // ── 0 ──
+  { title: "Why One Tree Isn't Enough",
+    plotLabel: "Single Deep Tree — Overfit Boundary",
+    render: renderDeepTree,
+    forestN: 0, forestVote: false,
+    body: `
+<p>You already know how to train a decision tree. Given enough depth, a single tree can perfectly separate any training set — including ours.</p>
+<p>The boundary at right classifies all 8 points correctly. But notice what happened: P4&nbsp;(5,&nbsp;7) is a <span class="hl">blue outlier in red territory</span>, and the tree added a special extra split just for it.</p>
+<div class="math-block">x&#x2081; &le; 3.5  &rarr;  Blue<br>x&#x2081; &gt; 3.5 <strong>and</strong> x&#x2082; &gt; 5.5  &rarr;  Blue  &#9664; extra branch for P4<br>x&#x2081; &gt; 3.5 <strong>and</strong> x&#x2082; &le; 5.5  &rarr;  Red</div>
+<p>This is <span class="bad">high variance</span>. If P4 were measured slightly differently, or happened not to be in our training set, the entire right-side boundary would shift. The tree is memorizing noise, not learning signal.</p>
+<p class="callout"><strong>Random Forest's answer:</strong> train many trees on slightly different data. Each tree memorizes <em>different</em> quirks. When you average many imperfect trees, those quirks cancel out.</p>`
+  },
+
+  // ── 1 ──
+  { title: "The Dataset",
+    plotLabel: "Feature Space",
+    render: renderData,
+    forestN: 0, forestVote: false,
+    body: `
+<p>Eight labeled points. <span class="tag-b">Blue</span> = class +1, <span class="tag-r">Red</span> = class −1.</p>
+<p>The two classes are mostly separated by x&#x2081;&nbsp;=&nbsp;3.5 — except for P4&nbsp;(5,&nbsp;7), the blue outlier sitting in the middle of the red cluster. That's the point that makes this dataset interesting.</p>
+<p>A perfect classifier needs to handle P4 correctly <em>and</em> generalize — not just memorize these exact 8 training examples. Watch how the Random Forest achieves this.</p>
+<p>Two features: x&#x2081; (horizontal position) and x&#x2082; (vertical position). Random Forest will learn which one matters more as a byproduct of training.</p>`
+  },
+
+  // ── 2 ──
+  { title: "Random Forest: Two Sources of Randomness",
+    plotLabel: "Feature Space",
+    render: renderData,
+    forestN: 0, forestVote: false,
+    body: `
+<p>A Random Forest trains N trees independently, then combines their votes. The key is making each tree <strong>different</strong> from the others. Two ingredients achieve this:</p>
+<ol>
+  <li style="margin-bottom:10px;"><strong>Bootstrap sampling</strong> — each tree trains on a random sample drawn <em>with replacement</em> from the training rows. Different training examples → different splits.</li>
+  <li><strong>Feature subsampling</strong> — at each split node, the tree only <em>considers</em> a random subset of features (typically &radic;p for p features). Different feature candidates at each node → different split directions.</li>
+</ol>
+<div class="math-block">For each tree 1 &hellip; N:<br>  1. Draw bootstrap sample B from training data<br>  2. Fit decision tree on B<br>     (at each node: consider only &radic;p random features)<br>  3. Store the tree<br><br>Predict: majority vote across all N trees</div>
+<p>These two randomness sources ensure the trees disagree with each other. <span class="hl">Averaging many trees that err in different directions causes the errors to cancel out</span> — that's the whole trick.</p>`
+  },
+
+  // ── 3 ──
+  { title: "Ingredient 1 — Bootstrap Sampling",
+    plotLabel: "Bootstrap Sample",
+    render: () => renderBoot(activeBoot),
+    forestN: 0, forestVote: false,
+    body: `
+<p>To train each tree, we draw 8 samples <strong>with replacement</strong> from the 8 original points. Some points appear twice; others not at all.</p>
+<p>Points not selected are called <strong>out-of-bag (OOB)</strong>. On average, each bootstrap sample omits about <span class="hl">37%</span> of the training points.</p>
+<p>Toggle between the three bootstrap samples we'll use:</p>
+<div style="margin-bottom:10px;">
+  <button class="bs-btn active" id="bs-B1" onclick="showBoot('B1')">B1 (omits P4, P8)</button>
+  <button class="bs-btn"        id="bs-B2" onclick="showBoot('B2')">B2 (omits P3, P7)</button>
+  <button class="bs-btn"        id="bs-B3" onclick="showBoot('B3')">B3 (omits P1, P6)</button>
+</div>
+<p>Each bootstrap sees a different mix of points. B1 happens to be missing P4 — the tricky outlier. That turns out to produce a very simple, clean tree boundary.</p>
+<p class="callout"><strong>×2 labels</strong> on points mean that point was sampled twice and counts double toward splits in that tree.</p>`
+  },
+
+  // ── 4 ──
+  { title: "Tree 1 Trains on Bootstrap B1",
+    plotLabel: "Tree 1 — Trained on B1 (P4, P8 are OOB)",
+    render: renderTree1,
+    forestN: 1, forestVote: false,
+    body: `
+<p>B1 contains P1, P2, P3 (blue) and P5, P6, P7 (red) — P4 and P8 are out-of-bag and never seen during training.</p>
+<p>Without P4 in the training set, the right side looks entirely red. The best split is just:</p>
+<div class="math-block">x&#x2081; &le; 3.5  &rarr;  <span style="color:#3b82f6">Blue</span><br>x&#x2081; &gt; 3.5  &rarr;  <span style="color:#ef4444">Red</span></div>
+<p>Tree 1 is simple and wrong about P4 — it would classify P4 as Red. But that's fine. <span class="hl">Tree 1 will be outvoted by trees that do see P4.</span></p>
+<p>Notice the boundary is cleaner than the deep single tree from step 0 — fewer splits, less memorization. This generalization is exactly what bootstrap sampling buys us.</p>`
+  },
+
+  // ── 5 ──
+  { title: "Ingredient 2 — Feature Subsampling",
+    plotLabel: "Tree 2 — Trained on B2 (feature = x₂ only at root)",
+    render: renderTree2,
+    forestN: 2, forestVote: false,
+    body: `
+<p>Now we train Tree 2 on B2, which <em>does</em> include P4 (sampled twice!). But here's the second source of randomness:</p>
+<p>At the root split node, Tree 2 randomly selects only <strong>one feature</strong> to consider (since &radic;2 &approx; 1). It draws <strong>x&#x2082;</strong>.</p>
+<div class="math-block">Candidates at root: {x&#x2082;} (x&#x2081; not considered this time)<br><br>Best x&#x2082; split: x&#x2082; > 5.5<br>&rarr; Upper: P2, P4 &rarr; <span style="color:#3b82f6">Blue</span><br>&rarr; Lower: P5, P6, P8 &rarr; <span style="color:#ef4444">Red</span></div>
+<p>Tree 2 makes a <em>horizontal</em> cut — completely different from Tree 1's vertical cut. <span class="hl">Feature subsampling forces this diversity in split direction.</span></p>
+<p>Tree 2 correctly handles P4: since P4 = (5, 7) has x&#x2082; = 7 &gt; 5.5, it gets classified Blue.</p>`
+  },
+
+  // ── 6 ──
+  { title: "Tree 3 — Two Splits, Trained on B3",
+    plotLabel: "Tree 3 — Trained on B3 (P1, P6 are OOB)",
+    render: renderTree3,
+    forestN: 3, forestVote: false,
+    body: `
+<p>B3 includes P4 and P3. The tree considers both features and ends up needing two splits:</p>
+<div class="math-block">x&#x2081; &le; 3.5  &rarr;  <span style="color:#3b82f6">Blue</span>   (handles P2, P3)<br>x&#x2081; &gt; 3.5 <strong>and</strong> x&#x2082; &gt; 5.5  &rarr;  <span style="color:#3b82f6">Blue</span>   (handles P4)<br>x&#x2081; &gt; 3.5 <strong>and</strong> x&#x2082; &le; 5.5  &rarr;  <span style="color:#ef4444">Red</span></div>
+<p>Tree 3 arrives at the same boundary as the "correct" single deep tree — but only because it happened to train on a bootstrap sample that included P4 and P3.</p>
+<p>We now have three trees with <strong>three different boundaries</strong>:</p>
+<ul>
+  <li>Tree 1: vertical cut only (misses P4)</li>
+  <li>Tree 2: horizontal cut only (handles P4 a different way)</li>
+  <li>Tree 3: vertical + horizontal (handles P4 the "direct" way)</li>
+</ul>
+<p>Next: let them vote.</p>`
+  },
+
+  // ── 7 ──
+  { title: "The Ensemble Vote",
+    plotLabel: "Ensemble — Majority Vote of 3 Trees",
+    render: renderEnsemble,
+    forestN: 3, forestVote: true,
+    body: `
+<p>For any new point, each tree casts a vote. Majority wins. The vote tally for <strong>P4 = (5, 7)</strong> is shown in the forest panel:</p>
+<ul>
+  <li>Tree 1: x&#x2081; > 3.5  &rarr;  <span class="bad">Red</span> ✗</li>
+  <li>Tree 2: x&#x2082; > 5.5  &rarr;  <span class="good">Blue</span> ✓</li>
+  <li>Tree 3: x&#x2081; > 3.5 and x&#x2082; > 5.5  &rarr;  <span class="good">Blue</span> ✓</li>
+</ul>
+<p><strong>2 Blue, 1 Red → Blue wins.</strong> The ensemble correctly classifies P4 even though one of the three trees gets it wrong.</p>
+<p>The ensemble boundary (at right) is <span class="hl">identical to the single deep tree from step 0</span> — but arrived at through averaging rather than memorization. That matters for generalization: the ensemble boundary is more stable because it required agreement from multiple trees trained on different data.</p>
+<p class="callout">With more trees (50, 100, 500), the boundary becomes even more stable. Individual errors average out further. This is the bias-variance tradeoff in action: each tree has low bias but high variance; averaging reduces variance while keeping bias low.</p>`
+  },
+
+  // ── 8 ──
+  { title: "Out-of-Bag Error — Free Validation",
+    plotLabel: "Tree 1 OOB: P4 and P8 were never seen",
+    render: renderOOB,
+    forestN: 3, forestVote: false,
+    body: `
+<p>Here's an elegant property of bootstrap sampling: each tree's OOB points are a <strong>free test set</strong>.</p>
+<p>Tree 1 never trained on P4 or P8. So Tree 1's predictions for P4 and P8 are unbiased — they tell us how Tree 1 generalizes to unseen data. Similarly, every point is OOB for roughly ⅓ of all trees.</p>
+<div class="math-block">OOB error = average prediction error<br>            across all (tree, OOB point) pairs</div>
+<p>Studies show <span class="hl">OOB error closely approximates leave-one-out cross-validation error</span> — without any extra computation. This is why Random Forest rarely needs an explicit validation set.</p>
+<p>For Tree 1 specifically: P4 is OOB, and Tree 1 predicts it as Red (wrong). That error is counted in the OOB estimate. Trees 2 and 3 both predict P4 correctly — their OOB estimates reflect that.</p>
+<p class="callout"><strong>Practical takeaway:</strong> use OOB error to tune n_estimators. Stop adding trees when OOB error plateaus.</p>`
+  },
+
+  // ── 9 ──
+  { title: "Feature Importance and When RF Wins",
+    plotLabel: "Feature Importances",
+    render: renderImportance,
+    forestN: 3, forestVote: false,
+    body: `
+<p>As a bonus, RF reports how much each feature reduced impurity on average across all splits in all trees. This gives you <strong>feature importance scores</strong> automatically.</p>
+<p>In this dataset both features matter, but x&#x2081; appears as the <em>first</em> split in two of three trees, giving it slightly higher importance.</p>
+<p><strong>Random Forest shines when:</strong></p>
+<ul>
+  <li>You want a strong default model without much tuning</li>
+  <li>Your data is tabular with mixed feature types</li>
+  <li>You want built-in feature importances</li>
+  <li>You want OOB error as a free validation estimate</li>
+</ul>
+<p><strong>Random Forest struggles when:</strong></p>
+<ul>
+  <li>You need an interpretable single rule (a shallow tree is more readable)</li>
+  <li>Inference speed is critical — predicting means running every tree</li>
+  <li>You need calibrated probabilities — RF vote fractions aren't well-calibrated</li>
+</ul>
+<p class="callout"><strong>vs. AdaBoost / XGBoost:</strong> Both boosting methods build trees <em>sequentially</em>, each correcting the previous one's errors. RF builds trees <em>in parallel</em> independently, then averages. Boosting has lower bias; RF has lower variance. On most tabular datasets, XGBoost edges out RF on accuracy; RF is more forgiving of default hyperparameters.</p>`
+  },
+];
+
+// ─── Navigation ───────────────────────────────────────────────────────────────
+const NSTEPS = STEPS.length;
+let currentStep = 0;
+
+function changeStep(delta) {
+  const n = currentStep + delta;
+  if (n < 0 || n >= NSTEPS) return;
+  currentStep = n;
+  applyStep(n);
+}
+
+function applyStep(n) {
+  const s = STEPS[n];
+  document.getElementById('step-counter').textContent = `Step ${n+1} of ${NSTEPS}`;
+  document.getElementById('prev-btn').disabled = n===0;
+  document.getElementById('next-btn').disabled = n===NSTEPS-1;
+  document.querySelectorAll('.dot').forEach((d,i) => {
+    d.className = 'dot' + (i<n?' done':i===n?' active':'');
+  });
+  document.getElementById('plot-label').textContent = s.plotLabel;
+  document.getElementById('step-title').textContent  = s.title;
+  document.getElementById('step-body').innerHTML     = s.body;
+  s.render();
+  renderForest(s.forestN, s.forestVote);
+  // reset boot buttons if present
+  if (n===3) {
+    activeBoot='B1';
+    ['B1','B2','B3'].forEach(k => {
+      const el=document.getElementById('bs-'+k);
+      if (el) el.classList.toggle('active', k==='B1');
+    });
+  }
+}
+
+function showBoot(bKey) {
+  activeBoot = bKey;
+  ['B1','B2','B3'].forEach(k => {
+    const el = document.getElementById('bs-'+k);
+    if (el) el.classList.toggle('active', k===bKey);
+  });
+  renderBoot(bKey);
+}
+
+function buildDots() {
+  const c = document.getElementById('dots');
+  for (let i=0; i<NSTEPS; i++) {
+    const d = document.createElement('div');
+    d.className = 'dot' + (i===0?' active':'');
+    c.appendChild(d);
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key==='ArrowRight'||e.key==='ArrowDown') changeStep(1);
+  if (e.key==='ArrowLeft' ||e.key==='ArrowUp')   changeStep(-1);
+});
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+buildDots();
+applyStep(0);
+</script>
+</body>
+</html>

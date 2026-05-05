@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Getflix Adventure — Live Demo</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0d1117; color: #e6edf3; min-height: 100vh; }
+  header { background: #161b22; border-bottom: 1px solid #30363d; padding: 1rem 2rem; }
+  header h1 { font-size: 1.4rem; color: #58a6ff; }
+  header p { color: #8b949e; font-size: 0.88rem; margin-top: 0.2rem; }
+  main { max-width: 900px; margin: 2rem auto; padding: 0 1.5rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+  .panel { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 1.4rem; }
+  .panel h2 { font-size: 1.1rem; color: #f0f6fc; margin-bottom: 0.3rem; }
+  .panel p.sub { font-size: 0.84rem; color: #8b949e; margin-bottom: 1rem; }
+  label { display: block; font-size: 0.85rem; color: #8b949e; margin-bottom: 0.3rem; }
+  input, select { width: 100%; background: #0d1117; border: 1px solid #30363d; color: #e6edf3;
+    padding: 0.45rem 0.7rem; border-radius: 6px; font-size: 0.9rem; margin-bottom: 0.8rem; }
+  button { background: #1f6feb; color: #fff; border: none; border-radius: 6px;
+    padding: 0.5rem 1.2rem; cursor: pointer; font-size: 0.9rem; }
+  button:hover { background: #388bfd; }
+  .result { margin-top: 1rem; background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+    padding: 0.9rem; font-size: 0.86rem; min-height: 60px; }
+  .result .label { color: #8b949e; font-size: 0.8rem; margin-bottom: 0.4rem; }
+  .error { color: #f78166; }
+  .cluster-badge { display: inline-block; background: #1f6feb22; color: #58a6ff;
+    border: 1px solid #1f6feb55; border-radius: 4px; padding: 0.15rem 0.6rem; font-size: 0.85rem; }
+  .rec-list { list-style: none; padding: 0; }
+  .rec-list li { display: flex; justify-content: space-between; padding: 0.3rem 0;
+    border-bottom: 1px solid #21262d; font-size: 0.86rem; }
+  .rec-list li:last-child { border-bottom: none; }
+  .rec-score { color: #7ee787; font-weight: 600; }
+  .forecast-row { display: flex; align-items: center; gap: 0.5rem; margin: 0.25rem 0; font-size: 0.84rem; }
+  .forecast-bar { flex: 1; background: #21262d; border-radius: 4px; height: 14px; overflow: hidden; }
+  .forecast-fill { height: 100%; background: #d2a8ff; border-radius: 4px; }
+  .full-width { grid-column: 1 / -1; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 0.4rem; }
+  .dot-ok { background: #7ee787; }
+  .dot-err { background: #f78166; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Getflix Adventure — Live Inference</h1>
+  <p>Start the Flask server with <code>python flask_app/app.py</code>, then use the panels below to query your trained models.</p>
+</header>
+<main>
+
+  <!-- Cluster panel -->
+  <div class="panel">
+    <h2>User Clustering</h2>
+    <p class="sub">Which viewer segment does this user belong to?</p>
+    <label for="cluster-uid">User ID (1–943)</label>
+    <input id="cluster-uid" type="number" min="1" max="943" value="1">
+    <button onclick="fetchCluster()">Look up cluster</button>
+    <div class="result" id="cluster-result">
+      <div class="label">Result will appear here</div>
+    </div>
+  </div>
+
+  <!-- Recommender panel -->
+  <div class="panel">
+    <h2>Movie Recommender</h2>
+    <p class="sub">Top predicted movies for a user they haven't seen yet.</p>
+    <label for="rec-uid">User ID (1–943)</label>
+    <input id="rec-uid" type="number" min="1" max="943" value="1">
+    <label for="rec-n">Number of recommendations</label>
+    <input id="rec-n" type="number" min="1" max="20" value="5">
+    <button onclick="fetchRecs()">Recommend</button>
+    <div class="result" id="rec-result">
+      <div class="label">Result will appear here</div>
+    </div>
+  </div>
+
+  <!-- Forecast panel -->
+  <div class="panel full-width">
+    <h2>Genre Rating Forecast</h2>
+    <p class="sub">ARIMA forecast of average monthly ratings for a genre over the next N months.</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+      <div>
+        <label for="fc-genre">Genre</label>
+        <select id="fc-genre">
+          <option>Action</option><option>Adventure</option><option>Animation</option>
+          <option>Children's</option><option>Comedy</option><option>Crime</option>
+          <option>Documentary</option><option selected>Drama</option><option>Fantasy</option>
+          <option>Film-Noir</option><option>Horror</option><option>Musical</option>
+          <option>Mystery</option><option>Romance</option><option>Sci-Fi</option>
+          <option>Thriller</option><option>War</option><option>Western</option>
+        </select>
+      </div>
+      <div>
+        <label for="fc-steps">Months ahead</label>
+        <input id="fc-steps" type="number" min="1" max="24" value="6">
+      </div>
+    </div>
+    <button onclick="fetchForecast()">Forecast</button>
+    <div class="result" id="fc-result">
+      <div class="label">Result will appear here</div>
+    </div>
+  </div>
+
+</main>
+<script>
+const BASE = "http://localhost:5050";
+
+async function fetchCluster() {
+  const uid = document.getElementById("cluster-uid").value;
+  const div = document.getElementById("cluster-result");
+  div.innerHTML = "<div class='label'>Loading…</div>";
+  try {
+    const res = await fetch(`${BASE}/cluster?user_id=${uid}`);
+    const data = await res.json();
+    if (data.error) {
+      div.innerHTML = `<span class='error'>${data.error}</span>`;
+    } else {
+      div.innerHTML = `<div class='label'>User ${data.user_id}</div>
+        <span class='cluster-badge'>Cluster ${data.cluster}</span>`;
+    }
+  } catch(e) {
+    div.innerHTML = `<span class='error'>Could not reach server. Is <code>python flask_app/app.py</code> running?</span>`;
+  }
+}
+
+async function fetchRecs() {
+  const uid = document.getElementById("rec-uid").value;
+  const n = document.getElementById("rec-n").value;
+  const div = document.getElementById("rec-result");
+  div.innerHTML = "<div class='label'>Loading…</div>";
+  try {
+    const res = await fetch(`${BASE}/recommend?user_id=${uid}&n=${n}`);
+    const data = await res.json();
+    if (data.error) {
+      div.innerHTML = `<span class='error'>${data.error}</span>`;
+    } else {
+      const items = data.recommendations.map(r =>
+        `<li><span>${r.title}</span><span class='rec-score'>★ ${r.predicted_rating}</span></li>`
+      ).join("");
+      div.innerHTML = `<div class='label'>Top ${data.recommendations.length} for User ${data.user_id}</div>
+        <ul class='rec-list'>${items}</ul>`;
+    }
+  } catch(e) {
+    div.innerHTML = `<span class='error'>Could not reach server. Is <code>python flask_app/app.py</code> running?</span>`;
+  }
+}
+
+async function fetchForecast() {
+  const genre = document.getElementById("fc-genre").value;
+  const steps = document.getElementById("fc-steps").value;
+  const div = document.getElementById("fc-result");
+  div.innerHTML = "<div class='label'>Loading…</div>";
+  try {
+    const res = await fetch(`${BASE}/forecast?genre=${encodeURIComponent(genre)}&steps=${steps}`);
+    const data = await res.json();
+    if (data.error) {
+      div.innerHTML = `<span class='error'>${data.error}</span>`;
+    } else {
+      const max = Math.max(...data.forecast);
+      const min = Math.min(...data.forecast);
+      const rows = data.forecast.map((v, i) => {
+        const pct = max > min ? ((v - min) / (max - min)) * 100 : 50;
+        return `<div class='forecast-row'>
+          <span style='width:70px;color:#8b949e;font-size:0.8rem'>${data.periods[i]}</span>
+          <div class='forecast-bar'><div class='forecast-fill' style='width:${pct.toFixed(1)}%'></div></div>
+          <span style='width:40px;color:#d2a8ff'>${v.toFixed(2)}</span>
+        </div>`;
+      }).join("");
+      div.innerHTML = `<div class='label'>${genre} — ${data.steps}-month forecast</div>${rows}`;
+    }
+  } catch(e) {
+    div.innerHTML = `<span class='error'>Could not reach server. Is <code>python flask_app/app.py</code> running?</span>`;
+  }
+}
+</script>
+</body>
+</html>

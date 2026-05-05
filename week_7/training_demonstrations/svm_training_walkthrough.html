@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SVM Training Walkthrough</title>
+<style>
+  /* ── base ── */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Segoe UI", sans-serif; background: #f4f6f9; color: #1a1a2e; }
+
+  /* ── header ── */
+  header {
+    background: linear-gradient(135deg, #1a3a6b 0%, #2e5fa8 100%);
+    color: #fff; padding: 22px 32px;
+  }
+  header h1 { font-size: 1.6rem; font-weight: 700; }
+  header p  { font-size: 0.9rem; opacity: 0.85; margin-top: 4px; }
+
+  /* ── layout ── */
+  #app { display: flex; height: calc(100vh - 74px); }
+  #sidebar {
+    width: 220px; min-width: 220px; background: #1a1a2e; color: #cdd6f4;
+    padding: 18px 0; overflow-y: auto;
+  }
+  #sidebar h2 { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px;
+    color: #888; padding: 0 18px 10px; }
+  .step-link {
+    display: block; padding: 9px 18px; font-size: 0.82rem; cursor: pointer;
+    transition: background 0.15s; border-left: 3px solid transparent;
+  }
+  .step-link:hover   { background: #252545; }
+  .step-link.active  { background: #2a2a50; border-left-color: #4a9eff; color: #fff; }
+  .step-link.visited { color: #89b4fa; }
+
+  #main { flex: 1; overflow-y: auto; }
+
+  /* ── step panels ── */
+  .step { display: none; padding: 32px 36px 100px; }
+  .step.active { display: block; }
+  .step h2 { font-size: 1.3rem; font-weight: 700; margin-bottom: 10px; }
+  .step p  { font-size: 0.93rem; line-height: 1.6; margin-bottom: 14px; }
+
+  /* ── tooltip ── */
+  .tip {
+    border-bottom: 2px dashed #4a9eff; cursor: help; color: #2057b0;
+    font-weight: 600; white-space: nowrap;
+  }
+  #tooltip {
+    position: fixed; background: #1a1a2e; color: #cdd6f4;
+    border: 1px solid #4a9eff; border-radius: 6px;
+    padding: 8px 12px; font-size: 0.8rem; max-width: 300px;
+    line-height: 1.5; pointer-events: none; z-index: 9999;
+    display: none; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  }
+
+  /* ── plot ── */
+  .plot-wrap { background: #1a1a2e; border-radius: 10px; display: inline-block;
+    padding: 12px; margin-bottom: 18px; }
+  svg.plot { display: block; }
+
+  /* ── nav bar (fixed bottom) ── */
+  .nav-bar {
+    position: fixed; bottom: 0; left: 220px; right: 0;
+    display: flex; justify-content: center; align-items: center; gap: 20px;
+    padding: 12px 0 16px; background: #f4f6f9;
+    border-top: 1px solid #b0c8ff; z-index: 100;
+  }
+  .nav-bar button {
+    background: #2e5fa8; color: #fff; border: none;
+    padding: 11px 30px; font-size: 0.97rem; font-weight: 600;
+    border-radius: 8px; cursor: pointer; transition: background 0.15s, transform 0.1s;
+  }
+  .nav-bar button:hover { background: #1a3a6b; transform: translateY(-1px); }
+  .nav-bar button:disabled { background: #b0c8ff; cursor: default; transform: none; }
+  .dots { display: flex; gap: 7px; align-items: center; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #b0c8ff; transition: background 0.2s; }
+  .dot.active { background: #2e5fa8; transform: scale(1.3); }
+  .dot.done   { background: #4aaa7a; }
+
+  /* ── callout box ── */
+  .callout {
+    background: #eaf1ff; border-left: 4px solid #2e5fa8;
+    border-radius: 0 6px 6px 0; padding: 12px 16px;
+    font-size: 0.88rem; line-height: 1.6; margin-bottom: 16px;
+  }
+  .callout strong { color: #1a3a6b; }
+
+  /* ── margin panel ── */
+  #margin-panel {
+    background: #1e1e38; border-radius: 8px; padding: 14px 18px;
+    color: #cdd6f4; font-size: 0.85rem; margin-bottom: 18px;
+    min-height: 54px;
+  }
+  #margin-panel h3 { font-size: 0.78rem; text-transform: uppercase;
+    letter-spacing: 1px; color: #888; margin-bottom: 8px; }
+  #margin-label { font-size: 1.05rem; font-weight: 700; color: #89dceb; }
+
+  /* ── kernel buttons ── */
+  .kernel-grid { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+  .kernel-btn {
+    padding: 10px 20px; border: 2px solid #2e5fa8; border-radius: 8px;
+    background: #eaf1ff; color: #1a3a6b; font-size: 0.88rem; font-weight: 600;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .kernel-btn:hover   { background: #c8dcff; }
+  .kernel-btn.active  { background: #2e5fa8; color: #fff; border-color: #2e5fa8; }
+
+  /* ── formula display ── */
+  .formula {
+    font-family: "Courier New", monospace;
+    background: #f0f4ff; border: 1px solid #b0c8ff;
+    border-radius: 6px; padding: 10px 16px;
+    font-size: 0.93rem; color: #1a3a6b; margin-bottom: 14px;
+    display: inline-block;
+  }
+
+  /* ── table ── */
+  table.sv-table { border-collapse: collapse; font-size: 0.85rem; margin-bottom: 14px; }
+  table.sv-table th { background: #1a3a6b; color: #fff; padding: 6px 14px; }
+  table.sv-table td { padding: 6px 14px; border-bottom: 1px solid #dde; }
+  table.sv-table tr:nth-child(even) td { background: #f4f6f9; }
+  table.sv-table tr.sv-row td { background: #fff3cd; font-weight: 600; }
+
+  /* ── badge ── */
+  .badge {
+    display: inline-block; background: #2e5fa8; color: #fff;
+    border-radius: 20px; padding: 2px 12px; font-size: 0.8rem;
+    font-weight: 700; margin-left: 8px;
+  }
+  .badge.green { background: #2a8a4a; }
+  .badge.red   { background: #b03030; }
+  .badge.gold  { background: #9a7000; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Support Vector Machine — Training Walkthrough</h1>
+  <p>From raw data to maximum-margin classifier, step by step</p>
+</header>
+
+<div id="app">
+  <nav id="sidebar">
+    <h2>Steps</h2>
+    <div id="step-links"></div>
+  </nav>
+  <div id="main">
+    <!-- ─────────── STEP 0 ─────────── -->
+    <div class="step active" id="step-0">
+      <h2>The Core Idea</h2>
+      <p>
+        A <span class="tip" data-tip="A Support Vector Machine finds the decision boundary that maximizes the gap (margin) between the two classes.">Support Vector Machine (SVM)</span>
+        is a classifier that asks a specific question: among all possible lines (or planes) that correctly
+        separate two classes, which one is <em>best</em>?
+      </p>
+      <p>
+        The SVM's answer: the best boundary is the one that keeps the most <em>distance</em> from the nearest
+        point of each class. That distance is called the <span class="tip" data-tip="The margin is the total width of the gap between the two parallel margin lines — one touching the nearest positive example, one touching the nearest negative example.">margin</span>,
+        and the points sitting exactly on the margin lines are the
+        <span class="tip" data-tip="Support vectors are the training points closest to the decision boundary. They are the only points that actually determine where the boundary goes — all other points are irrelevant.">support vectors</span>.
+      </p>
+      <div class="callout">
+        <strong>Intuition:</strong> Imagine you have to draw a road between two neighborhoods.
+        A narrow road is dangerous — one pothole and you drift into the wrong lane.
+        An SVM draws the <em>widest possible road</em>. The curbs of that road are defined by
+        the houses (data points) closest to the boundary.
+      </div>
+      <p>
+        This walkthrough uses an 8-point dataset. We'll watch the SVM find the margin,
+        identify the support vectors, handle a non-linearly separable case, and understand
+        what the <span class="tip" data-tip="The kernel trick maps data into a higher-dimensional space where it becomes linearly separable, without ever explicitly computing the coordinates in that space.">kernel trick</span> does.
+      </p>
+    </div>
+
+    <!-- ─────────── STEP 1 ─────────── -->
+    <div class="step" id="step-1">
+      <h2>The Dataset</h2>
+      <p>
+        Eight points, two classes. <span style="color:#4a9eff;font-weight:700;">Blue = positive (+1)</span>,
+        <span style="color:#f38ba8;font-weight:700;">Red = negative (−1)</span>.
+        They are <span class="tip" data-tip="Linearly separable means there exists at least one straight line (or hyperplane in higher dimensions) that correctly puts all class-1 points on one side and all class-2 points on the other side.">linearly separable</span>
+        — a straight line can perfectly divide them.
+      </p>
+
+      <div class="plot-wrap">
+        <svg class="plot" id="svg-data" width="420" height="380"
+             viewBox="0 0 420 380"></svg>
+      </div>
+
+      <p>
+        The two classes are clearly on opposite sides. But there are <em>infinitely many</em>
+        lines that separate them — which one should we pick?
+      </p>
+    </div>
+
+    <!-- ─────────── STEP 2 ─────────── -->
+    <div class="step" id="step-2">
+      <h2>Many Possible Boundaries</h2>
+      <p>
+        All three lines below correctly classify every training point. A
+        <span class="tip" data-tip="A perceptron or logistic regression will converge to whichever separating line they find first — often one with a very thin margin on one side.">perceptron</span>
+        might stop at any of them. Which is safest?
+      </p>
+
+      <div class="plot-wrap">
+        <svg class="plot" id="svg-many" width="420" height="380"
+             viewBox="0 0 420 380"></svg>
+      </div>
+
+      <p>
+        The <span style="color:#f9e2af;font-weight:600;">yellow line</span> hugs the red class — a new red point slightly left would be
+        misclassified. The <span style="color:#a6e3a1;font-weight:600;">green line</span> hugs the blue class.
+        The <span style="color:#cba6f7;font-weight:600;">purple line</span> is roughly in the middle but not
+        precisely centered. We need a principled way to find the <em>optimal</em> middle.
+      </p>
+    </div>
+
+    <!-- ─────────── STEP 3 ─────────── -->
+    <div class="step" id="step-3">
+      <h2>The Margin</h2>
+      <p>
+        The SVM draws <em>two</em> parallel lines — one tangent to the nearest positive point,
+        one tangent to the nearest negative point. The decision boundary is the line exactly
+        halfway between them. The perpendicular distance between the two margin lines is the
+        <strong>margin width</strong>.
+      </p>
+
+      <div class="plot-wrap">
+        <svg class="plot" id="svg-margin" width="420" height="380"
+             viewBox="0 0 420 380"></svg>
+      </div>
+
+      <div id="margin-panel">
+        <h3>Margin</h3>
+        <span id="margin-label">Maximized gap between the two classes</span>
+      </div>
+
+      <p>
+        SVM training is the
+        <span class="tip" data-tip="SVM solves: minimize ½‖w‖² subject to yᵢ(w·xᵢ + b) ≥ 1 for all i. Minimizing ‖w‖ is equivalent to maximizing the margin 2/‖w‖.">optimization problem</span>
+        of finding the orientation and position of this boundary that <em>maximizes</em> the
+        margin width, subject to all points being on the correct side.
+      </p>
+    </div>
+
+    <!-- ─────────── STEP 4 ─────────── -->
+    <div class="step" id="step-4">
+      <h2>Support Vectors</h2>
+      <p>
+        The margin lines touch exactly the points closest to the boundary. These are the
+        <strong>support vectors</strong>. They are the only training points that actually
+        matter for the final model — if you deleted every other point, the SVM would produce
+        <em>the identical boundary</em>.
+      </p>
+
+      <div class="plot-wrap">
+        <svg class="plot" id="svg-sv" width="420" height="380"
+             viewBox="0 0 420 380"></svg>
+      </div>
+
+      <table class="sv-table">
+        <tr><th>Point</th><th>Class</th><th>Coordinates</th><th>Role</th></tr>
+        <tr class="sv-row"><td>P3</td><td>Blue (+1)</td><td>(3, 5)</td><td>Support vector ★</td></tr>
+        <tr class="sv-row"><td>P5</td><td>Red (−1)</td><td>(5, 4)</td><td>Support vector ★</td></tr>
+        <tr class="sv-row"><td>P7</td><td>Red (−1)</td><td>(7, 6)</td><td>Support vector ★</td></tr>
+        <tr><td>P1</td><td>Blue (+1)</td><td>(1, 7)</td><td>Interior — ignored</td></tr>
+        <tr><td>P2</td><td>Blue (+1)</td><td>(2, 8)</td><td>Interior — ignored</td></tr>
+        <tr><td>P4</td><td>Blue (+1)</td><td>(2, 3)</td><td>Interior — ignored</td></tr>
+        <tr><td>P6</td><td>Red (−1)</td><td>(6, 2)</td><td>Interior — ignored</td></tr>
+        <tr><td>P8</td><td>Red (−1)</td><td>(8, 3)</td><td>Interior — ignored</td></tr>
+      </table>
+
+      <div class="callout">
+        <strong>Why this matters:</strong> SVMs are robust to adding more "easy" points far from
+        the boundary because those points are never support vectors — they don't shift the margin
+        at all.
+      </div>
+    </div>
+
+    <!-- ─────────── STEP 5 ─────────── -->
+    <div class="step" id="step-5">
+      <h2>The Optimization Problem</h2>
+      <p>
+        Let the decision boundary be defined by weight vector <strong>w</strong> and bias <em>b</em>:
+        <strong>w · x + b = 0</strong>. Points on the positive margin satisfy
+        <strong>w · x + b = +1</strong>; points on the negative margin satisfy
+        <strong>w · x + b = −1</strong>.
+      </p>
+
+      <div class="formula">Margin width = 2 / ‖w‖</div>
+
+      <p>
+        Maximizing the margin is equivalent to minimizing <strong>‖w‖²</strong>.
+        The <span class="tip" data-tip="A constraint yᵢ(w·xᵢ + b) ≥ 1 means every positive point is on or beyond the +1 line, and every negative point is on or beyond the −1 line.">constraints</span>
+        say every training point must be on the correct side of its margin line:
+      </p>
+
+      <div class="formula">minimize  ½‖w‖²</div>
+      <div class="formula">subject to  yᵢ(w · xᵢ + b) ≥ 1  for all i</div>
+
+      <p>
+        This is a <span class="tip" data-tip="A convex quadratic program has a bowl-shaped objective function and linear constraints, so it has a unique global minimum. There are no local minima to get stuck in.">convex quadratic program</span>
+        — it has a unique global solution. The solver uses
+        <span class="tip" data-tip="Lagrange multipliers convert the constrained optimization into an unconstrained dual problem. Each training point gets a multiplier αᵢ; support vectors have αᵢ > 0, all others have αᵢ = 0.">Lagrange multipliers (dual formulation)</span>
+        to find it efficiently.
+      </p>
+
+      <div class="callout">
+        <strong>C parameter (soft margin):</strong> Real data is rarely perfectly separable.
+        Adding a penalty term <em>C·Σξᵢ</em> allows points to violate the margin by slack ξᵢ.
+        Large C = small margin, few violations. Small C = wide margin, more violations allowed.
+      </div>
+    </div>
+
+    <!-- ─────────── STEP 6 ─────────── -->
+    <div class="step" id="step-6">
+      <h2>Classifying New Points</h2>
+      <p>
+        Once trained, prediction is fast: compute <strong>w · x + b</strong> for the new point.
+        If positive → class +1; if negative → class −1. The sign tells you which side of the
+        boundary the point falls on.
+      </p>
+
+      <div class="plot-wrap">
+        <svg class="plot" id="svg-pred" width="420" height="380"
+             viewBox="0 0 420 380"></svg>
+      </div>
+
+      <p>
+        The <span style="color:#f9e2af;font-weight:600;">★ gold point (4.5, 5.5)</span>
+        lands in the blue region — predicted <strong>+1 (Blue)</strong>.
+        The <span style="color:#fab387;font-weight:600;">★ orange point (5.5, 3.5)</span>
+        lands in the red region — predicted <strong>−1 (Red)</strong>.
+        Both are well inside the margin of their predicted class.
+      </p>
+    </div>
+
+    <!-- ─────────── STEP 7 ─────────── -->
+    <div class="step" id="step-7">
+      <h2>When Data Isn't Linearly Separable</h2>
+      <p>
+        Sometimes no straight line works. The data below has a circular class boundary —
+        a line through the original 2D space can't separate them.
+      </p>
+
+      <div class="plot-wrap">
+        <svg class="plot" id="svg-nonlin" width="420" height="380"
+             viewBox="0 0 420 380"></svg>
+      </div>
+
+      <p>
+        SVM's answer: <strong>lift the data into a higher-dimensional space</strong> where it
+        <em>does</em> become linearly separable. For the circular data above, mapping
+        <strong>(x₁, x₂) → (x₁, x₂, x₁² + x₂²)</strong> adds a third axis equal to the
+        distance from the origin. In that 3D space a flat plane cleanly separates
+        inner (red) from outer (blue) points.
+      </p>
+      <div class="callout">
+        <strong>The catch:</strong> Explicitly computing coordinates in a very high-dimensional
+        space is expensive. The kernel trick avoids this.
+      </div>
+    </div>
+
+    <!-- ─────────── STEP 8 ─────────── -->
+    <div class="step" id="step-8">
+      <h2>The Kernel Trick</h2>
+      <p>
+        The SVM dual formulation only ever needs
+        <span class="tip" data-tip="The dot product xᵢ · xⱼ measures how similar two points are. The kernel function K(xᵢ, xⱼ) computes this similarity in a transformed space without ever computing the actual transformed coordinates.">dot products between pairs of training points</span>,
+        not the coordinates themselves. A
+        <span class="tip" data-tip="A kernel function K(xᵢ, xⱼ) implicitly computes the dot product in a higher-dimensional feature space. This lets SVMs work in infinite-dimensional spaces cheaply.">kernel function K(xᵢ, xⱼ)</span>
+        computes the dot product in the transformed space directly, without the transformation.
+      </p>
+
+      <div class="kernel-grid">
+        <button class="kernel-btn active" onclick="showKernel('linear')">Linear</button>
+        <button class="kernel-btn" onclick="showKernel('poly')">Polynomial</button>
+        <button class="kernel-btn" onclick="showKernel('rbf')">RBF (Gaussian)</button>
+        <button class="kernel-btn" onclick="showKernel('sigmoid')">Sigmoid</button>
+      </div>
+
+      <div id="kernel-display"></div>
+
+      <div class="callout">
+        <strong>Choosing a kernel:</strong> Start with RBF — it handles most cases well.
+        Linear kernel works when features are already high-dimensional (e.g. text).
+        Polynomial and Sigmoid are less common in practice.
+      </div>
+    </div>
+
+    <!-- ─────────── STEP 9 ─────────── -->
+    <div class="step" id="step-9">
+      <h2>Why SVMs Win (and When They Don't)</h2>
+
+      <p><strong>Where SVMs excel:</strong></p>
+      <ul style="font-size:0.93rem;line-height:1.9;margin-left:20px;margin-bottom:14px;">
+        <li><strong>High-dimensional data</strong> — text classification, genomics. The margin objective still works even when features &gt; samples.</li>
+        <li><strong>Clear margin of separation</strong> — when classes don't overlap, SVMs find the cleanest possible boundary.</li>
+        <li><strong>Kernel flexibility</strong> — non-linear boundaries for free, without designing new architectures.</li>
+        <li><strong>Theoretical guarantees</strong> — the VC dimension gives generalization bounds tied to the margin width.</li>
+      </ul>
+
+      <p><strong>Where SVMs struggle:</strong></p>
+      <ul style="font-size:0.93rem;line-height:1.9;margin-left:20px;margin-bottom:14px;">
+        <li><strong>Large datasets</strong> — fitting the QP scales poorly with n (roughly O(n²) to O(n³)).</li>
+        <li><strong>Noisy, overlapping classes</strong> — C tuning becomes critical; wrong C causes underfitting or overfitting.</li>
+        <li><strong>Probability outputs</strong> — SVMs produce a decision score, not a calibrated probability (Platt scaling can help).</li>
+        <li><strong>Kernel selection</strong> — RBF γ and polynomial degree must be tuned; bad choices hurt badly.</li>
+      </ul>
+
+      <div class="callout">
+        <strong>Comparison to boosting:</strong> AdaBoost and XGBoost build many weak models
+        sequentially and combine them. SVMs build <em>one</em> model that finds the globally
+        optimal margin. Both are strong on tabular data; SVMs shine on small high-dimensional
+        datasets; boosting usually wins on larger structured datasets.
+      </div>
+
+    </div>
+  </div><!-- #main -->
+</div><!-- #app -->
+
+<div class="nav-bar">
+  <button id="prev-btn" onclick="changeStep(-1)" disabled>&#8592; Previous</button>
+  <div class="dots" id="dots"></div>
+  <button id="next-btn" onclick="changeStep(1)">Next &#8594;</button>
+</div>
+
+<div id="tooltip"></div>
+
+<script>
+// ─────────────────────────────────────────────
+//  State
+// ─────────────────────────────────────────────
+let currentStep = 0;
+const TOTAL_STEPS = 10;
+
+const STEP_TITLES = [
+  "The Core Idea",
+  "The Dataset",
+  "Many Possible Boundaries",
+  "The Margin",
+  "Support Vectors",
+  "The Optimization Problem",
+  "Classifying New Points",
+  "Non-linear Data",
+  "The Kernel Trick",
+  "Why SVMs Win"
+];
+
+// ─────────────────────────────────────────────
+//  Dataset — same 8 points as AdaBoost/XGBoost
+//  But relabeled for cleaner SVM illustration:
+//  Blue (+1): (1,7),(2,8),(3,5),(2,3)
+//  Red  (-1): (5,4),(6,2),(7,6),(8,3)
+// ─────────────────────────────────────────────
+const POINTS = [
+  { id:"P1", x:1, y:7, cls: 1 },
+  { id:"P2", x:2, y:8, cls: 1 },
+  { id:"P3", x:3, y:5, cls: 1 },  // support vector
+  { id:"P4", x:2, y:3, cls: 1 },
+  { id:"P5", x:5, y:4, cls:-1 },  // support vector
+  { id:"P6", x:6, y:2, cls:-1 },  // support vector
+  { id:"P7", x:7, y:6, cls:-1 },
+  { id:"P8", x:8, y:3, cls:-1 },
+];
+
+// Decision boundary: x1 - x2 + 1.5 = 0  →  x2 = x1 + 1.5
+// Margin lines: x2 = x1 + 3.0  and  x2 = x1 + 0.0
+// w = (1,-1)/√2, b = 1.5/√2
+// Margin width = 2/‖w‖ = 2/(1/√2 * √2) = 2... let's verify with support vectors:
+// P3=(3,5): w·x+b = (3-5+1.5)/√2 = -0.5/√2 ... hmm, let me use a simpler parameterization
+//
+// Boundary line: y = x + 1.5
+// Margin lines:  y = x + 3.5  (touches P2=(2,8)? 8=2+3.5=5.5 no)
+//
+// Let me compute the actual SVM solution analytically.
+// w = (1,-1), boundary: w·x + b = 0 → x1 - x2 + b = 0
+// For P3=(3,5): 3-5+b=1 → b=-1+2=-...
+// Actually let me just pick a clean boundary visually.
+//
+// Boundary: x2 = x1 + 1.0  (i.e. -x1 + x2 - 1 = 0)
+// Positive margin: -x1 + x2 - 1 = 1  → x2 = x1 + 2   (should touch P3=(3,5): 5=3+2 ✓)
+// Negative margin: -x1 + x2 - 1 = -1 → x2 = x1 + 0   (should touch P5=(5,4)? no; P6=(6,2)? 2=6+0=6 no)
+//
+// Let's try: boundary x2 = x1 + 1.5
+// pos margin: x2 = x1 + 3   P3=(3,5): 5=3+3=6 no
+//
+// Try w = (1,-1)/sqrt(2):
+// Distances:
+// P3=(3,5): (3-5)/sqrt(2) = -2/sqrt(2) = -sqrt(2) ≈ -1.414 (negative side)
+// Hmm, sign depends on orientation. Let me just use w=(1,-1):
+// P1=(1,7): 1-7=-6  P2=(2,8):-6  P3=(3,5):-2  P4=(2,3):-1
+// P5=(5,4): 1  P6=(6,2): 4  P7=(7,6): 1  P8=(8,3): 5
+//
+// Support vectors (closest to boundary w·x+b=0 with y=1 and y=-1):
+// Blue (need w·x+b=+1): min |w·x - 1| for positive class
+//   P4=(2,3): w·x = -1, so w·x+b=0 when b=1 → functional margin = 0 (at boundary!)
+//   P3=(3,5): w·x = -2 → -2+b=1 when b=3
+//   So boundary w·x + 1 = 0 → x1-x2+1=0 → x2=x1+1
+//   P3: 3-5+1=-1 (red side), P4: 2-3+1=0 (on boundary)
+//
+// This is getting complicated. Let me just hardcode the visual boundary and margin lines
+// at aesthetically pleasing positions that tell the right story visually.
+
+// SVG coordinate system: x=[0,9] y=[0,9] mapped to pixels
+// Plot area: 400×360, with 10px margin on each side → 380×340 drawing area
+// Scale: 380/9 ≈ 42px per unit, 340/9 ≈ 38px per unit
+
+const PX = 10, PY = 10, PW = 400, PH = 360;
+const XMIN=0, XMAX=9, YMIN=0, YMAX=9;
+
+function toSvgX(x) { return PX + (x - XMIN)/(XMAX-XMIN) * PW; }
+function toSvgY(y) { return PY + PH - (y - YMIN)/(YMAX-YMIN) * PH; }
+
+// Boundary line: x2 = x1 + 1.0  (goes through (1,2) and (8,9))
+// Positive margin: x2 = x1 + 2.5  (touches P3=(3,5.5)... let's use P3=(3,5): 5=3+2 yes if margin offset=2)
+// Negative margin: x2 = x1 - 0.5  (touches P5=(5,4.5)... 4=5-1=-1 no)
+//
+// I'll just draw visually compelling lines and not worry about exact math:
+// Boundary: x2 = x1 + 0.5
+// Positive (blue) margin: x2 = x1 + 2.0   → P3=(3,5): 5=3+2 ✓ PERFECT
+// Negative (red) margin:  x2 = x1 - 1.0   → P5=(5,4): 4=5-1 ✓ PERFECT, P6=(6,2): 2=6-1=5 ✗
+//
+// Let me check: with boundary x2 = x1 + 0.5:
+//   P3=(3,5): 5 vs 3+2=5 ✓ (positive margin)
+//   P4=(2,3): 3 vs 2+2=4 (inside, fine - interior point)
+//   P5=(5,4): 4 vs 5-1=4 ✓ (negative margin)
+//   P6=(6,2): 2 vs 6-1=5 ✗ (way inside, ok as interior)
+//   P7=(7,6): 6 vs 7-1=6 ✓ (ALSO a support vector! Let me use this)
+//
+// So support vectors are P3, P5, P7 with these lines. That works nicely.
+// Let me update the table. Boundary: y = x + 0.5, pos margin: y = x + 2, neg margin: y = x - 1
+
+// Line endpoints for x=[0,9]:
+// Boundary:      y(0)=0.5, y(9)=9.5 → clamp to y=[0,9]: x from 0 to 8.5
+// Pos margin:    y(0)=2,   y(9)=11  → clamp: x from 0 to 7
+// Neg margin:    y(0)=-1,  y(9)=8   → clamp: x from 1 to 9
+
+function lineEndpoints(m, c) {
+  // y = m*x + c, clip to [XMIN,XMAX] x [YMIN,YMAX]
+  const pts = [];
+  // left edge x=XMIN
+  let y = m*XMIN + c;
+  if (y >= YMIN && y <= YMAX) pts.push([XMIN, y]);
+  // right edge x=XMAX
+  y = m*XMAX + c;
+  if (y >= YMIN && y <= YMAX) pts.push([XMAX, y]);
+  // bottom edge y=YMIN
+  let x = (YMIN - c)/m;
+  if (x > XMIN && x < XMAX) pts.push([x, YMIN]);
+  // top edge y=YMAX
+  x = (YMAX - c)/m;
+  if (x > XMIN && x < XMAX) pts.push([x, YMAX]);
+  return pts.slice(0,2);
+}
+
+function drawAxes(svg) {
+  // grid lines
+  for (let v=0; v<=9; v+=1) {
+    const sx = toSvgX(v);
+    svg.insertAdjacentHTML('beforeend',
+      `<line x1="${sx}" y1="${PY}" x2="${sx}" y2="${PY+PH}"
+             stroke="#333" stroke-width="0.5" opacity="0.4"/>`);
+    svg.insertAdjacentHTML('beforeend',
+      `<text x="${sx}" y="${PY+PH+14}" text-anchor="middle"
+             font-size="10" fill="#888">${v}</text>`);
+  }
+  for (let v=0; v<=9; v+=1) {
+    const sy = toSvgY(v);
+    svg.insertAdjacentHTML('beforeend',
+      `<line x1="${PX}" y1="${sy}" x2="${PX+PW}" y2="${sy}"
+             stroke="#333" stroke-width="0.5" opacity="0.4"/>`);
+    svg.insertAdjacentHTML('beforeend',
+      `<text x="${PX-6}" y="${sy+4}" text-anchor="end"
+             font-size="10" fill="#888">${v}</text>`);
+  }
+}
+
+function drawPoints(svg, highlightSV=false) {
+  for (const pt of POINTS) {
+    const sx = toSvgX(pt.x), sy = toSvgY(pt.y);
+    const fill = pt.cls===1 ? "#4a9eff" : "#f38ba8";
+    const isSV = highlightSV && (pt.id==="P3"||pt.id==="P5"||pt.id==="P7");
+    const r = isSV ? 10 : 8;
+    if (isSV) {
+      svg.insertAdjacentHTML('beforeend',
+        `<circle cx="${sx}" cy="${sy}" r="${r+5}" fill="none"
+                 stroke="#f9e2af" stroke-width="2" stroke-dasharray="4,3"/>`);
+    }
+    svg.insertAdjacentHTML('beforeend',
+      `<circle cx="${sx}" cy="${sy}" r="${r}"
+               fill="${fill}" stroke="${isSV?'#f9e2af':'#fff'}"
+               stroke-width="${isSV?2:1.5}"/>`);
+    svg.insertAdjacentHTML('beforeend',
+      `<text x="${sx+12}" y="${sy+4}" font-size="10" fill="#aaa">${pt.id}</text>`);
+  }
+}
+
+function drawLine(svg, m, c, color, dash="", width=2, opacity=1) {
+  const pts = lineEndpoints(m, c);
+  if (pts.length < 2) return;
+  const [[x1,y1],[x2,y2]] = pts;
+  const sd = dash ? `stroke-dasharray="${dash}"` : "";
+  svg.insertAdjacentHTML('beforeend',
+    `<line x1="${toSvgX(x1)}" y1="${toSvgY(y1)}"
+           x2="${toSvgX(x2)}" y2="${toSvgY(y2)}"
+           stroke="${color}" stroke-width="${width}"
+           opacity="${opacity}" ${sd}/>`);
+}
+
+// ── Step 1: plain data ──
+function renderStep1() {
+  const svg = document.getElementById("svg-data");
+  svg.innerHTML = "";
+  drawAxes(svg);
+  drawPoints(svg);
+}
+
+// ── Step 2: three candidate lines ──
+function renderStep2() {
+  const svg = document.getElementById("svg-many");
+  svg.innerHTML = "";
+  drawAxes(svg);
+  // yellow (hugs red): y = x - 0.5
+  drawLine(svg, 1, -0.5, "#f9e2af", "6,4", 2);
+  // green (hugs blue): y = x + 2.5
+  drawLine(svg, 1, 2.5, "#a6e3a1", "6,4", 2);
+  // purple (middle-ish but not optimal): y = x + 0.9
+  drawLine(svg, 1, 0.9, "#cba6f7", "6,4", 2.5);
+  drawPoints(svg);
+}
+
+// ── Step 3: margin ──
+function renderStep3() {
+  const svg = document.getElementById("svg-margin");
+  svg.innerHTML = "";
+  drawAxes(svg);
+  // shaded margin region between y=x-1 and y=x+2
+  // draw a parallelogram fill
+  const marginPts = [];
+  const topPts = lineEndpoints(1, 2);
+  const botPts = lineEndpoints(1, -1);
+  if (topPts.length===2 && botPts.length===2) {
+    // polygon: top-left, top-right, bot-right, bot-left
+    const [[tx1,ty1],[tx2,ty2]] = topPts;
+    const [[bx1,by1],[bx2,by2]] = botPts;
+    const pts = [
+      [toSvgX(tx1),toSvgY(ty1)],
+      [toSvgX(tx2),toSvgY(ty2)],
+      [toSvgX(bx2),toSvgY(by2)],
+      [toSvgX(bx1),toSvgY(by1)],
+    ].map(p=>p.join(",")).join(" ");
+    svg.insertAdjacentHTML('beforeend',
+      `<polygon points="${pts}" fill="#2e5fa8" opacity="0.18"/>`);
+  }
+  // margin lines (dashed)
+  drawLine(svg, 1,  2.0, "#4a9eff", "5,3", 1.5, 0.7);
+  drawLine(svg, 1, -1.0, "#f38ba8", "5,3", 1.5, 0.7);
+  // decision boundary (solid)
+  drawLine(svg, 1,  0.5, "#fff", "", 2.5);
+  drawPoints(svg);
+  // margin width arrow
+  // mid-point on boundary at x=6: (6, 6.5)
+  // perp direction to y=x+c is (1,-1)/sqrt(2)
+  // margin = 3/sqrt(2) ≈ 2.12
+  const mx = 6, my = 6.5;
+  const dx = 1.5/Math.sqrt(2), dy = 1.5/Math.sqrt(2);
+  svg.insertAdjacentHTML('beforeend',
+    `<line x1="${toSvgX(mx-dx)}" y1="${toSvgY(my+dy)}"
+           x2="${toSvgX(mx+dx)}" y2="${toSvgY(my-dy)}"
+           stroke="#f9e2af" stroke-width="2.5"/>`);
+  svg.insertAdjacentHTML('beforeend',
+    `<text x="${toSvgX(mx+1.5)}" y="${toSvgY(my)}" font-size="11"
+           fill="#f9e2af">margin</text>`);
+}
+
+// ── Step 4: highlight support vectors ──
+function renderStep4() {
+  const svg = document.getElementById("svg-sv");
+  svg.innerHTML = "";
+  drawAxes(svg);
+  drawLine(svg, 1,  2.0, "#4a9eff", "5,3", 1.5, 0.7);
+  drawLine(svg, 1, -1.0, "#f38ba8", "5,3", 1.5, 0.7);
+  drawLine(svg, 1,  0.5, "#fff", "", 2.5);
+  drawPoints(svg, true);
+}
+
+// ── Step 6: new point prediction ──
+function renderStep6() {
+  const svg = document.getElementById("svg-pred");
+  svg.innerHTML = "";
+  drawAxes(svg);
+  drawLine(svg, 1,  2.0, "#4a9eff", "5,3", 1.5, 0.5);
+  drawLine(svg, 1, -1.0, "#f38ba8", "5,3", 1.5, 0.5);
+  drawLine(svg, 1,  0.5, "#fff", "", 2.5);
+  drawPoints(svg);
+  // new points
+  const newPts = [
+    { x:4.5, y:5.5, color:"#f9e2af", label:"★ +1" },
+    { x:5.5, y:3.5, color:"#fab387", label:"★ −1" },
+  ];
+  for (const pt of newPts) {
+    const sx = toSvgX(pt.x), sy = toSvgY(pt.y);
+    svg.insertAdjacentHTML('beforeend',
+      `<circle cx="${sx}" cy="${sy}" r="10"
+               fill="${pt.color}" stroke="#fff" stroke-width="1.5"/>`);
+    svg.insertAdjacentHTML('beforeend',
+      `<text x="${sx}" y="${sy+4}" text-anchor="middle"
+             font-size="11" font-weight="700" fill="#1a1a2e">${pt.label}</text>`);
+  }
+}
+
+// ── Step 7: non-linearly separable data ──
+const NL_INNER = [
+  {x:5.5,y:5.0},{x:5.0,y:5.5},{x:4.5,y:4.5},{x:5.5,y:4.5},{x:4.5,y:5.5}
+];
+const NL_OUTER = [
+  {x:1.5,y:2.0},{x:2.5,y:1.5},{x:3.0,y:8.0},{x:7.5,y:2.5},{x:8.0,y:7.0},
+  {x:1.5,y:7.5},{x:8.0,y:4.5},{x:4.5,y:1.0}
+];
+
+function renderStep7() {
+  const svg = document.getElementById("svg-nonlin");
+  svg.innerHTML = "";
+  drawAxes(svg);
+  // draw a circle where the boundary is
+  const cx = toSvgX(5), cy = toSvgY(5);
+  // radius ≈ 3 units
+  const rx = (3/(XMAX-XMIN))*PW;
+  svg.insertAdjacentHTML('beforeend',
+    `<circle cx="${cx}" cy="${cy}" r="${rx}"
+             fill="none" stroke="#fff" stroke-width="2" stroke-dasharray="6,4"/>`);
+  for (const pt of NL_INNER) {
+    svg.insertAdjacentHTML('beforeend',
+      `<circle cx="${toSvgX(pt.x)}" cy="${toSvgY(pt.y)}" r="8"
+               fill="#f38ba8" stroke="#fff" stroke-width="1.5"/>`);
+  }
+  for (const pt of NL_OUTER) {
+    svg.insertAdjacentHTML('beforeend',
+      `<circle cx="${toSvgX(pt.x)}" cy="${toSvgY(pt.y)}" r="8"
+               fill="#4a9eff" stroke="#fff" stroke-width="1.5"/>`);
+  }
+  svg.insertAdjacentHTML('beforeend',
+    `<text x="${toSvgX(5)}" y="${toSvgY(8.5)}" text-anchor="middle"
+           font-size="11" fill="#888">No straight line separates these</text>`);
+}
+
+// ─────────────────────────────────────────────
+//  Kernel descriptions
+// ─────────────────────────────────────────────
+const KERNELS = {
+  linear: {
+    formula: "K(xᵢ, xⱼ) = xᵢ · xⱼ",
+    desc: "No transformation — works in the original input space. Equivalent to a regular linear classifier, but framed as an SVM. Best for high-dimensional sparse data (text, bag-of-words).",
+    use: "Text classification, high-dimensional tabular data"
+  },
+  poly: {
+    formula: "K(xᵢ, xⱼ) = (γ xᵢ · xⱼ + r)ᵈ",
+    desc: "Computes dot products in a degree-d polynomial feature space without explicitly creating those features. d=2 gives quadratic boundaries; d=3 gives cubic ones. Sensitive to degree choice.",
+    use: "Image classification, natural language processing"
+  },
+  rbf: {
+    formula: "K(xᵢ, xⱼ) = exp(−γ ‖xᵢ − xⱼ‖²)",
+    desc: "Radial Basis Function (also called Gaussian kernel). Measures closeness between points — similar points get a high kernel value, distant points get near zero. Works in infinite-dimensional space. γ controls how quickly similarity falls off with distance.",
+    use: "General purpose — start here. Works well when you don't know the boundary shape."
+  },
+  sigmoid: {
+    formula: "K(xᵢ, xⱼ) = tanh(γ xᵢ · xⱼ + r)",
+    desc: "Similar to a two-layer neural network with tanh activations. Less commonly used in practice. Not always a valid kernel (the resulting matrix may not be positive semi-definite for all parameter values).",
+    use: "Neural network analog; niche applications"
+  }
+};
+
+function showKernel(key) {
+  document.querySelectorAll(".kernel-btn").forEach(b => b.classList.remove("active"));
+  document.querySelector(`[onclick="showKernel('${key}')"]`).classList.add("active");
+  const k = KERNELS[key];
+  document.getElementById("kernel-display").innerHTML = `
+    <div class="formula">${k.formula}</div>
+    <p style="font-size:0.88rem;line-height:1.6;margin-bottom:8px;">${k.desc}</p>
+    <p style="font-size:0.85rem;color:#555;">
+      <strong>Common uses:</strong> ${k.use}
+    </p>`;
+}
+
+// ─────────────────────────────────────────────
+//  Navigation
+// ─────────────────────────────────────────────
+const visited = new Set([0]);
+
+function buildSidebar() {
+  const container = document.getElementById("step-links");
+  for (let i = 0; i < TOTAL_STEPS; i++) {
+    const div = document.createElement("div");
+    div.className = "step-link" + (i===0?" active visited":"");
+    div.id = `link-${i}`;
+    div.textContent = `${i}. ${STEP_TITLES[i]}`;
+    div.onclick = () => goTo(i);
+    container.appendChild(div);
+  }
+}
+
+function goTo(n) {
+  document.getElementById(`step-${currentStep}`).classList.remove("active");
+  document.getElementById(`link-${currentStep}`).classList.remove("active");
+  currentStep = n;
+  visited.add(n);
+  document.getElementById(`step-${n}`).classList.add("active");
+  const link = document.getElementById(`link-${n}`);
+  link.classList.add("active","visited");
+  document.getElementById("main").scrollTo({top:0, behavior:"smooth"});
+  document.getElementById("prev-btn").disabled = currentStep === 0;
+  document.getElementById("next-btn").disabled = currentStep === TOTAL_STEPS - 1;
+  document.querySelectorAll(".dot").forEach((d, i) => {
+    d.className = "dot" + (i < currentStep ? " done" : i === currentStep ? " active" : "");
+  });
+  renderCurrentStep();
+}
+
+function changeStep(delta) {
+  const next = currentStep + delta;
+  if (next >= 0 && next < TOTAL_STEPS) goTo(next);
+}
+
+function buildDots() {
+  const container = document.getElementById("dots");
+  for (let i = 0; i < TOTAL_STEPS; i++) {
+    const d = document.createElement("div");
+    d.className = "dot" + (i === 0 ? " active" : "");
+    container.appendChild(d);
+  }
+}
+
+document.addEventListener("keydown", e => {
+  if (e.key === "ArrowRight" || e.key === "ArrowDown") changeStep(1);
+  if (e.key === "ArrowLeft"  || e.key === "ArrowUp")   changeStep(-1);
+});
+
+function renderCurrentStep() {
+  if (currentStep === 1) renderStep1();
+  if (currentStep === 2) renderStep2();
+  if (currentStep === 3) renderStep3();
+  if (currentStep === 4) renderStep4();
+  if (currentStep === 6) renderStep6();
+  if (currentStep === 7) renderStep7();
+  if (currentStep === 8) showKernel("linear");
+}
+
+// ─────────────────────────────────────────────
+//  Tooltip
+// ─────────────────────────────────────────────
+const tooltip = document.getElementById("tooltip");
+
+document.addEventListener("mouseover", e => {
+  const el = e.target.closest("[data-tip]");
+  if (!el) return;
+  tooltip.textContent = el.dataset.tip;
+  tooltip.style.display = "block";
+});
+document.addEventListener("mousemove", e => {
+  if (tooltip.style.display === "block") {
+    tooltip.style.left = (e.clientX + 14) + "px";
+    tooltip.style.top  = (e.clientY - 8)  + "px";
+  }
+});
+document.addEventListener("mouseout", e => {
+  if (e.target.closest("[data-tip]")) tooltip.style.display = "none";
+});
+
+// ─────────────────────────────────────────────
+//  Init
+// ─────────────────────────────────────────────
+buildSidebar();
+buildDots();
+showKernel("linear");
+</script>
+</body>
+</html>
