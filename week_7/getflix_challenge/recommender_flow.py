@@ -37,10 +37,17 @@ VALID_KEYS = {
     "svd_f20", "svd_f50", "svd_f100",
     "knn_basic_k20", "knn_basic_k40", "knn_basic_k80",
     "knn_means_k20", "knn_means_k40", "knn_means_k80",
+    # Add your own keys here when you extend algo_from_key().
 }
 
 
 def algo_from_key(key):
+    # -------------------------------------------------------------------
+    # Experiment here: add new algorithms from scikit-surprise.
+    # Ideas: SVDpp (adds implicit feedback), NMF, CoClustering, or
+    # BaselineOnly as a sanity-check baseline. Add a new branch below,
+    # give it a key name, and add that key to VALID_KEYS.
+    # -------------------------------------------------------------------
     if key.startswith("svd"):
         n = int(key.split("f")[1])
         return SVD(n_factors=n, random_state=42)

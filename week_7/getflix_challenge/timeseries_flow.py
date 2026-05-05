@@ -79,6 +79,12 @@ class TimeseriesFlow(FlowSpec):
         items["movie_id"] = items["movie_id"].astype(int)
         merged = ratings.merge(items[["movie_id"] + _GENRE_NAMES], on="movie_id")
 
+        # ---------------------------------------------------------------
+        # Experiment here: change how the series is constructed.
+        # Ideas: resample to biweekly or monthly ("2W", "ME") to smooth
+        # noise, raise or lower the minimum-ratings threshold (>= 10),
+        # or add new genres from _GENRE_NAMES to the GENRES list above.
+        # ---------------------------------------------------------------
         series = {}
         for genre in GENRES:
             g = merged[merged[genre] == 1].copy()
@@ -104,6 +110,14 @@ class TimeseriesFlow(FlowSpec):
         series = self.series_by_genre[genre]
         order = (self.p, self.d, self.q)
 
+        # ---------------------------------------------------------------
+        # Experiment here: swap in a different model class.
+        # Ideas: statsmodels SARIMAX for seasonal orders, or
+        # ExponentialSmoothing (from statsmodels.tsa.holtwinters) for
+        # a simpler trend/level model. The rest of the step — forecasting
+        # and saving — works the same as long as result.get_forecast()
+        # returns a compatible object.
+        # ---------------------------------------------------------------
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             result = ARIMA(series, order=order).fit(

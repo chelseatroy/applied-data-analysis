@@ -62,6 +62,7 @@ class ClusteringFlow(FlowSpec):
             "dbscan_e05_m5", "dbscan_e10_m5", "dbscan_e15_m5",
         }
         assert self.fill in valid_fills, f"--fill must be one of {valid_fills}"
+        # If you add a new model_key, add it to valid_models and handle it in fit_model.
         assert self.model_key in valid_models, f"--model_key must be one of {valid_models}"
         print(f"Pipeline: fill={self.fill}, model={self.model_key}")
         self.next(self.load_data)
@@ -83,6 +84,12 @@ class ClusteringFlow(FlowSpec):
 
     @step
     def build_matrix(self):
+        # ---------------------------------------------------------------
+        # Experiment here: change how the user-rating matrix is built.
+        # Ideas: add a new fill strategy (e.g. global_mean), apply PCA
+        # before scaling, or engineer new columns from self.ratings or
+        # self.items (e.g. genre preference vectors, rating counts).
+        # ---------------------------------------------------------------
         pivot = self.ratings.pivot_table(
             index="user_id", columns="movie_id", values="rating"
         )
@@ -100,6 +107,12 @@ class ClusteringFlow(FlowSpec):
 
     @step
     def fit_model(self):
+        # ---------------------------------------------------------------
+        # Experiment here: add a new algorithm or adjust hyperparameters.
+        # Ideas: GaussianMixture, SpectralClustering, HDBSCAN, or DBSCAN
+        # after your own PCA step. Add a new elif branch, give your model
+        # a key name, and add that key to valid_models in start().
+        # ---------------------------------------------------------------
         key = self.model_key
         scaled = self.scaled
 

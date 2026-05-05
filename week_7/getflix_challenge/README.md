@@ -93,6 +93,32 @@ for run in Flow('ClusteringFlow'):
 
 ---
 
+## The Flows Are Yours to Modify
+
+The commands above run the flows with the choices you made in the walkthrough —
+but the walkthrough's menu is a starting point, not a ceiling. The flow files
+are plain Python. Open them, read them, and change them.
+
+Each flow has comments marking the steps where experimentation makes the most
+sense:
+
+| Flow | Where to look | What you can change |
+|------|--------------|---------------------|
+| `clustering_flow.py` | `build_matrix` step | Fill strategy, feature engineering, dimensionality reduction before scaling |
+| `clustering_flow.py` | `fit_model` step | Algorithm family, hyperparameters, custom preprocessing |
+| `recommender_flow.py` | `algo_from_key` function | Algorithm class (`SVDpp`, `NMF`, `CoClustering`, your own) |
+| `timeseries_flow.py` | `load_data` step | Resampling period, minimum-ratings threshold, genres |
+| `timeseries_flow.py` | `fit_genre` step | Model class (`SARIMAX`, `ExponentialSmoothing`, etc.) |
+
+When you add a new option, you also need to register it: add the new key to
+`valid_models` in `clustering_flow.py`'s `start` step, or to `VALID_KEYS` in
+`recommender_flow.py`. The flow will tell you if you forget.
+
+You can run any modified flow the same way as before — the trained model lands
+in `flask_app/models/` and the app picks it up on restart.
+
+---
+
 ## Phase 4 — Start the App
 
 In a separate terminal (with the environment activated), start the Flask server:
@@ -239,11 +265,42 @@ produce) so it is visible in your git history.
 
 **Step 2 — Choose one thing to try.**
 
-Based on what you found, pick one change to the model — a different
-hyperparameter, a different fill strategy, a preprocessing decision, a different
-algorithm — that you believe is motivated by the errors you saw. You do not need
-to be right. You need to be able to explain *why* the thing you chose was a
-reasonable response to what you observed.
+Based on what you found, modify the flow and train a new model. The change
+should be motivated by what you observed in Step 1. You do not need to be right.
+You need to be able to explain *why* the thing you chose was a reasonable
+response to what you observed.
+
+Some directions that require actually opening the flow file:
+
+*For the clustering model:*
+- **Feature engineering** — instead of clustering on raw ratings, construct a
+  genre preference vector per user (average rating per genre, weighted by how
+  many genre films they've rated). Users with similar taste profiles may cluster
+  more coherently than users who happened to rate the same individual films.
+- **Fill strategy** — zero-fill treats an unrated movie as a strong negative
+  signal; user-mean fill treats it as neutral. Try movie-mean fill instead:
+  missing means "I probably would have rated this about as well as everyone
+  else did." Add it as a new branch in `build_matrix`.
+- **Rating variance** — add a per-user rating variance column to the matrix.
+  A user who gives everything 4 stars is very different from one whose ratings
+  span 1–5, even if their means are identical.
+- **Algorithm family** — try `GaussianMixture` (soft cluster assignments) or
+  `SpectralClustering` (captures non-convex shapes) in `fit_model`.
+
+*For the recommender model:*
+- **Item-based similarity** — the default is user-based KNN (find users like
+  me, recommend what they liked). Flip `user_based` to `False` in `_SIM_OPTS`
+  to find movies similar to ones the target user already rated. This often
+  works better for users with few ratings.
+- **Implicit feedback (SVDpp)** — SVD only uses the rating values; SVDpp also
+  uses the fact that a user rated a movie at all, regardless of the score.
+  This can improve predictions for users whose explicit ratings are sparse.
+- **Data filtering** — users with fewer than 5 ratings tell the model almost
+  nothing and may distort its latent factors. Try filtering them out in
+  `load_data` before building the Surprise dataset.
+- **Similarity metric** — cosine similarity (the default) is sensitive to
+  rating scale differences between users. Try Pearson correlation, which
+  mean-centers each user's ratings before comparing.
 
 Train the new model via the appropriate Metaflow flow and deploy it to the app.
 

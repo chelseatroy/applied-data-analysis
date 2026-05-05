@@ -19,6 +19,7 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 from flask import Flask, jsonify, request, send_from_directory
+from sklearn.metrics.pairwise import cosine_similarity
 
 app = Flask(__name__, static_folder="static")
 
@@ -58,7 +59,10 @@ def load_ratings():
 def load_movies():
     if "movies" not in _cache:
         path = os.path.join(DATA_DIR, "u.item")
-        cols = ["movie_id", "title"] + [f"g{i}" for i in range(19)]
+        cols = (
+            ["movie_id", "title", "release_date", "video_release_date", "imdb_url"]
+            + [f"g{i}" for i in range(19)]
+        )
         _cache["movies"] = pd.read_csv(
             path, sep="|", names=cols, encoding="latin-1"
         )[["movie_id", "title"]]
@@ -255,6 +259,107 @@ def forecast():
         "conf_int_lower":  fc["conf_int_lower"][:steps],
         "conf_int_upper":  fc["conf_int_upper"][:steps],
         "periods":         fc["periods"][:steps],
+    })
+
+
+# ---------------------------------------------------------------------------
+# Movies endpoint — most-rated movies, used by the instructor dashboard
+# ---------------------------------------------------------------------------
+
+@app.route("/movies")
+def movies_endpoint():
+    """
+    ?n=<int>   Returns the n most-rated movies in the dataset.
+    Used by the instructor dashboard's Rate & Recommend feature.
+    """
+    n          = request.args.get("n", default=15, type=int)
+    ratings_df = load_ratings()
+    movies_df  = load_movies()
+    popular = (
+        ratings_df.groupby("movie_id")
+        .size()
+        .reset_index(name="n_ratings")
+        .nlargest(n, "n_ratings")
+        .merge(movies_df, on="movie_id")
+    )
+    return jsonify([
+        {"movie_id": int(r.movie_id), "title": r.title}
+        for _, r in popular.iterrows()
+    ])
+
+
+# ---------------------------------------------------------------------------
+# New-user recommendation — nearest-neighbor lookup for users not in training
+# ---------------------------------------------------------------------------
+
+@app.route("/recommend_new_user", methods=["POST"])
+def recommend_new_user():
+    """
+    POST body: {"ratings": {"<movie_id>": <score>, ...}, "n": 10}
+
+    Finds the most similar existing user (cosine similarity on the rating
+    matrix), then returns that neighbour's top-n predicted recommendations
+    using the deployed recommender model.
+
+    Response includes:
+        nearest_user  — the existing user you're most similar to
+        similarity    — cosine similarity score (0–1)
+        recommendations — list of {movie_id, title, predicted_rating}
+    """
+    data        = request.get_json(silent=True) or {}
+    raw         = data.get("ratings", {})
+    n           = data.get("n", 10)
+    new_ratings = {int(k): float(v) for k, v in raw.items() if float(v) > 0}
+
+    if not new_ratings:
+        return jsonify({"error": "at least one rating required"}), 400
+
+    bundle = load_model("recommender")
+    if bundle is None:
+        return jsonify({"error": "recommender.pkl not found — run recommender_flow.py first"}), 503
+
+    ratings_df = load_ratings()
+    movies_df  = load_movies()
+
+    pivot      = ratings_df.pivot_table(
+        index="user_id", columns="movie_id", values="rating"
+    ).fillna(0)
+    movie_cols = list(pivot.columns)
+
+    new_vec = np.zeros(len(movie_cols))
+    for mid, rating in new_ratings.items():
+        if mid in movie_cols:
+            new_vec[movie_cols.index(mid)] = rating
+
+    sims         = cosine_similarity(new_vec.reshape(1, -1), pivot.values)[0]
+    nearest_idx  = int(np.argmax(sims))
+    nearest_user = int(pivot.index[nearest_idx])
+    nearest_sim  = round(float(sims[nearest_idx]), 3)
+
+    algo         = bundle["algo"]
+    all_ids      = ratings_df["movie_id"].unique()
+    already      = set(new_ratings.keys())
+    candidates   = [m for m in all_ids if m not in already]
+
+    preds = sorted(
+        [(m, algo.predict(nearest_user, m).est) for m in candidates],
+        key=lambda x: -x[1],
+    )
+
+    results = []
+    for mid, score in preds[:n]:
+        row   = movies_df[movies_df["movie_id"] == mid]
+        title = row["title"].values[0] if len(row) else f"Movie {mid}"
+        results.append({
+            "movie_id":         int(mid),
+            "title":            title,
+            "predicted_rating": round(score, 2),
+        })
+
+    return jsonify({
+        "nearest_user":    nearest_user,
+        "similarity":      nearest_sim,
+        "recommendations": results,
     })
 
 
