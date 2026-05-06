@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How Stacking Learns — Step by Step</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, sans-serif;
+  background: #f0f7fa; color: #1a3040; min-height: 100vh;
+}
+header {
+  background: linear-gradient(135deg, #0a5a70, #0d8aaa);
+  color: white; padding: 18px 36px;
+  display: flex; justify-content: space-between; align-items: center;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+}
+header h1 { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.3px; }
+#step-counter {
+  background: rgba(255,255,255,0.18); padding: 5px 16px;
+  border-radius: 20px; font-size: 0.88rem; font-weight: 600;
+}
+.content { max-width: 1120px; margin: 0 auto; padding: 20px 24px 80px; }
+.main-row { display: flex; gap: 20px; margin-bottom: 20px; align-items: stretch; }
+.panel {
+  background: #ffffff; border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.1); overflow: hidden;
+}
+.panel-header {
+  background: #d0eaf5; border-bottom: 1px solid #a0c8da;
+  padding: 10px 18px; font-size: 0.75rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.08em; color: #0a5a70;
+}
+#plot-panel { flex: 0 0 420px; }
+#plot-panel svg { display: block; }
+#explain-panel { flex: 1; display: flex; flex-direction: column; }
+#explain-content { padding: 18px 22px; flex: 1; }
+#step-title { font-size: 1.18rem; font-weight: 700; color: #0a5a70; margin-bottom: 13px; line-height: 1.3; }
+#step-body { font-size: 0.93rem; line-height: 1.75; color: #1a3040; }
+#step-body p { margin-bottom: 11px; }
+#step-body ul, #step-body ol { margin: 6px 0 11px 22px; }
+#step-body li { margin-bottom: 3px; }
+.math-block {
+  background: #e0f2fa; border-left: 3px solid #0d8aaa;
+  padding: 11px 15px; margin: 11px 0;
+  font-family: 'Menlo', 'Courier New', monospace;
+  font-size: 0.85rem; line-height: 1.85; border-radius: 0 6px 6px 0; color: #0a4a60;
+}
+.good { color: #1a7840; font-weight: 700; }
+.bad  { color: #c03030; font-weight: 700; }
+.hl   { color: #0a5a70; font-weight: 700; }
+.callout {
+  background: #dff0f8; border-radius: 8px; padding: 9px 14px;
+  margin-top: 10px; font-size: 0.88rem; color: #0a4a60; line-height: 1.6;
+}
+.tag-b { display: inline-block; background: #3b82f6; color: white; padding: 1px 7px; border-radius: 4px; font-size: 0.8rem; font-weight: 700; }
+.tag-r { display: inline-block; background: #e05252; color: white; padding: 1px 7px; border-radius: 4px; font-size: 0.8rem; font-weight: 700; }
+#table-panel { margin-bottom: 20px; }
+#table-panel svg { display: block; width: 100%; }
+.nav-bar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  display: flex; justify-content: center; align-items: center; gap: 20px;
+  padding: 12px 0 16px; background: #f0f7fa;
+  border-top: 1px solid #a0c8da; z-index: 100;
+}
+.nav-bar button {
+  background: #0d8aaa; color: white; border: none;
+  padding: 11px 30px; font-size: 0.97rem; font-weight: 600;
+  border-radius: 8px; cursor: pointer; transition: background 0.15s, transform 0.1s;
+}
+.nav-bar button:hover { background: #0a6a88; transform: translateY(-1px); }
+.nav-bar button:disabled { background: #a0c8da; cursor: default; transform: none; }
+.dots { display: flex; gap: 7px; align-items: center; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: #b0d8e8; transition: background 0.2s; }
+.dot.active { background: #0d8aaa; transform: scale(1.3); }
+.dot.done   { background: #4aaa7a; }
+</style>
+</head>
+<body>
+<header>
+  <h1>How Stacking Learns — Step by Step</h1>
+  <div id="step-counter">Step 1 of 10</div>
+</header>
+
+<div class="content">
+  <div class="main-row">
+    <div class="panel" id="plot-panel">
+      <div class="panel-header" id="plot-label">Feature Space</div>
+      <svg id="scatter" width="420" height="415"></svg>
+    </div>
+    <div class="panel" id="explain-panel">
+      <div class="panel-header">What the Algorithm Is Doing</div>
+      <div id="explain-content">
+        <div id="step-title"></div>
+        <div id="step-body"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="table-panel">
+    <div class="panel-header" id="table-label">Predictions Table</div>
+    <svg id="pred-table" viewBox="0 0 960 200" height="200"></svg>
+  </div>
+
+  <div class="nav-bar">
+    <button id="prev-btn" onclick="changeStep(-1)" disabled>← Previous</button>
+    <div class="dots" id="dots"></div>
+    <button id="next-btn" onclick="changeStep(1)">Next →</button>
+  </div>
+</div>
+
+<script>
+// ─── Dataset ─────────────────────────────────────────────────────────────────
+// Same 8-point dataset as AdaBoost / Random Forest walkthroughs.
+// P4=(5,7) is the tricky blue outlier in red territory.
+const PTS = [
+  {id:1, x1:1, x2:6, cls:'blue'},
+  {id:2, x1:2, x2:7, cls:'blue'},
+  {id:3, x1:1, x2:4, cls:'blue'},
+  {id:4, x1:5, x2:7, cls:'blue'},  // outlier
+  {id:5, x1:5, x2:2, cls:'red'},
+  {id:6, x1:6, x2:3, cls:'red'},
+  {id:7, x1:7, x2:4, cls:'red'},
+  {id:8, x1:6, x2:5, cls:'red'},
+];
+
+const TRUE_CLS = ['blue','blue','blue','blue','red','red','red','red'];
+
+// Model A: x1 < 3.5 → Blue          — misses P4
+// Model B: x2 > 5.5 → Blue          — misses P3
+// Model C: x1>4 AND x2<5 → Red      — misses P8
+const PREDS = {
+  A: ['blue','blue','blue','red', 'red','red','red','red'],
+  B: ['blue','blue','red', 'blue','red','red','red','red'],
+  C: ['blue','blue','blue','blue','red','red','red','blue'],
+};
+
+// Meta-learner: majority vote of A, B, C (all 8 come out correct)
+const META_PRED = PTS.map((_,i) => {
+  const blues = [PREDS.A[i], PREDS.B[i], PREDS.C[i]].filter(v => v==='blue').length;
+  return blues >= 2 ? 'blue' : 'red';
+});
+
+// ─── Scatter SVG helpers ──────────────────────────────────────────────────────
+const P = { L:54, R:394, T:14, B:374 };
+const xScale = (P.R - P.L) / 8;
+const yScale = (P.B - P.T) / 9;
+function toSVG(x1, x2) { return { x: P.L + x1*xScale, y: P.B - x2*yScale }; }
+
+// Decision regions: array of {x1,y1,x2,y2,cls} in data-space coords
+const REGIONS = {
+  none: [],
+  A: [
+    {x1:0,   y1:0, x2:3.5, y2:9, cls:'blue'},
+    {x1:3.5, y1:0, x2:9,   y2:9, cls:'red'},
+  ],
+  B: [
+    {x1:0, y1:5.5, x2:9, y2:9,   cls:'blue'},
+    {x1:0, y1:0,   x2:9, y2:5.5, cls:'red'},
+  ],
+  C: [
+    {x1:0, y1:0, x2:4, y2:9, cls:'blue'},   // left of x1=4: always blue
+    {x1:4, y1:5, x2:9, y2:9, cls:'blue'},   // upper-right: blue
+    {x1:4, y1:0, x2:9, y2:5, cls:'red'},    // lower-right: red
+  ],
+  // Ensemble boundary that correctly handles all 8 points (what the meta-learner produces)
+  ensemble: [
+    {x1:0,   y1:0,   x2:3.5, y2:9,   cls:'blue'},
+    {x1:3.5, y1:5.5, x2:9,   y2:9,   cls:'blue'},
+    {x1:3.5, y1:0,   x2:9,   y2:5.5, cls:'red'},
+  ],
+};
+
+function renderScatter(regKey, highlightErrorIds) {
+  const regions = REGIONS[regKey] || [];
+  let s = `<rect width="420" height="415" fill="#0a1c28"/>`;
+
+  // Grid
+  for (let v=0; v<=8; v++) {
+    const sx = P.L + v*xScale;
+    s += `<line x1="${sx}" y1="${P.T}" x2="${sx}" y2="${P.B}" stroke="#182838" stroke-width="1"/>`;
+  }
+  for (let v=0; v<=9; v++) {
+    const sy = P.B - v*yScale;
+    s += `<line x1="${P.L}" y1="${sy}" x2="${P.R}" y2="${sy}" stroke="#182838" stroke-width="1"/>`;
+  }
+
+  // Decision regions
+  for (const r of regions) {
+    const sx = P.L + r.x1*xScale;
+    const sy = P.B - r.y2*yScale;
+    const sw = (r.x2 - r.x1) * xScale;
+    const sh = (r.y2 - r.y1) * yScale;
+    const fill = r.cls==='blue' ? '#3b82f6' : '#e05252';
+    s += `<rect x="${sx}" y="${sy}" width="${sw}" height="${sh}" fill="${fill}" opacity="0.18"/>`;
+  }
+
+  // Axes
+  s += `<line x1="${P.L}" y1="${P.T}" x2="${P.L}" y2="${P.B}" stroke="#2a5870" stroke-width="2"/>`;
+  s += `<line x1="${P.L}" y1="${P.B}" x2="${P.R}" y2="${P.B}" stroke="#2a5870" stroke-width="2"/>`;
+  for (let v=0; v<=8; v+=2) {
+    s += `<text x="${P.L+v*xScale}" y="${P.B+16}" text-anchor="middle" font-size="11" fill="#5a8898" font-family="sans-serif">${v}</text>`;
+  }
+  for (let v=0; v<=8; v+=2) {
+    s += `<text x="${P.L-6}" y="${P.B-v*yScale+4}" text-anchor="end" font-size="11" fill="#5a8898" font-family="sans-serif">${v}</text>`;
+  }
+  const midX=(P.L+P.R)/2, midY=(P.T+P.B)/2;
+  s += `<text x="${midX}" y="410" text-anchor="middle" font-size="13" fill="#7aacc0" font-weight="700" font-family="sans-serif">x₁</text>`;
+  s += `<text x="12" y="${midY}" text-anchor="middle" font-size="13" fill="#7aacc0" font-weight="700" font-family="sans-serif" transform="rotate(-90,12,${midY})">x₂</text>`;
+
+  // Boundary lines
+  if (regKey==='A') {
+    const sx = P.L + 3.5*xScale;
+    s += `<line x1="${sx}" y1="${P.T}" x2="${sx}" y2="${P.B}" stroke="#0d8aaa" stroke-width="2" stroke-dasharray="9,5"/>`;
+    s += `<text x="${sx+5}" y="${P.T+14}" font-size="11" fill="#4ac8e8" font-weight="700" font-family="sans-serif">x₁ = 3.5</text>`;
+  }
+  if (regKey==='B') {
+    const sy = P.B - 5.5*yScale;
+    s += `<line x1="${P.L}" y1="${sy}" x2="${P.R}" y2="${sy}" stroke="#a855f7" stroke-width="2" stroke-dasharray="9,5"/>`;
+    s += `<text x="${P.L+5}" y="${sy-5}" font-size="11" fill="#c084fc" font-weight="700" font-family="sans-serif">x₂ = 5.5</text>`;
+  }
+  if (regKey==='C') {
+    const sx4 = P.L + 4*xScale;
+    const sy5 = P.B - 5*yScale;
+    s += `<line x1="${sx4}" y1="${P.T}" x2="${sx4}" y2="${sy5}" stroke="#f59e0b" stroke-width="2" stroke-dasharray="9,5"/>`;
+    s += `<line x1="${sx4}" y1="${sy5}" x2="${P.R}" y2="${sy5}" stroke="#f59e0b" stroke-width="2" stroke-dasharray="9,5"/>`;
+    s += `<text x="${sx4+5}" y="${P.T+14}" font-size="11" fill="#fbbf24" font-weight="700" font-family="sans-serif">x₁=4, x₂=5</text>`;
+  }
+  if (regKey==='ensemble') {
+    const sx = P.L + 3.5*xScale;
+    const sy = P.B - 5.5*yScale;
+    s += `<line x1="${sx}" y1="${P.T}" x2="${sx}" y2="${sy}" stroke="#4aaa7a" stroke-width="2" stroke-dasharray="9,5"/>`;
+    s += `<line x1="${sx}" y1="${sy}" x2="${P.R}" y2="${sy}" stroke="#4aaa7a" stroke-width="2" stroke-dasharray="9,5"/>`;
+    s += `<text x="${sx+5}" y="${P.T+14}" font-size="11" fill="#4aaa7a" font-weight="700" font-family="sans-serif">Meta boundary</text>`;
+  }
+
+  // Points
+  PTS.forEach((pt, i) => {
+    const {x, y} = toSVG(pt.x1, pt.x2);
+    const isErr = highlightErrorIds && highlightErrorIds.includes(pt.id);
+    const r = 9;
+    if (pt.cls==='blue') {
+      s += `<circle cx="${x}" cy="${y}" r="${r}" fill="#3b82f6" stroke="${isErr?'#fbbf24':'white'}" stroke-width="${isErr?2.8:1.8}"/>`;
+      s += `<text x="${x}" y="${y+4}" text-anchor="middle" font-size="9" fill="white" font-weight="700" font-family="sans-serif">B</text>`;
+    } else {
+      const d = r*1.1;
+      s += `<polygon points="${x},${y-d*1.32} ${x+d*1.32},${y} ${x},${y+d*1.32} ${x-d*1.32},${y}" fill="#e05252" stroke="${isErr?'#fbbf24':'white'}" stroke-width="${isErr?2.8:1.8}"/>`;
+      s += `<text x="${x}" y="${y+4}" text-anchor="middle" font-size="9" fill="white" font-weight="700" font-family="sans-serif">R</text>`;
+    }
+    if (isErr) {
+      s += `<text x="${x}" y="${y-r-5}" text-anchor="middle" font-size="12" fill="#fbbf24" font-weight="700" font-family="sans-serif">✗</text>`;
+    }
+    s += `<text x="${x+12}" y="${y-4}" font-size="9" fill="#5a8898" font-family="sans-serif">P${pt.id}</text>`;
+  });
+
+  // Legend
+  const lx=P.L+4, ly=P.T+8;
+  s += `<rect x="${lx}" y="${ly}" width="112" height="44" rx="5" fill="#0a1c28" opacity="0.95"/>`;
+  s += `<circle cx="${lx+14}" cy="${ly+12}" r="7" fill="#3b82f6"/>`;
+  s += `<text x="${lx+27}" y="${ly+16}" font-size="11" fill="#7aacc0" font-family="sans-serif">Blue (4 pts)</text>`;
+  const dx=lx+14, dy=ly+30, dd=6.5;
+  s += `<polygon points="${dx},${dy-dd*1.32} ${dx+dd*1.32},${dy} ${dx},${dy+dd*1.32} ${dx-dd*1.32},${dy}" fill="#e05252"/>`;
+  s += `<text x="${lx+27}" y="${ly+34}" font-size="11" fill="#7aacc0" font-family="sans-serif">Red (4 pts)</text>`;
+  return s;
+}
+
+// ─── Predictions table ────────────────────────────────────────────────────────
+const MODEL_COLORS  = {A:'#0d8aaa', B:'#a855f7', C:'#f59e0b'};
+const MODEL_LABELS  = {A:'Model A', B:'Model B', C:'Model C'};
+const FEAT_LABELS   = {A:'Feat 1 (A pred)', B:'Feat 2 (B pred)', C:'Feat 3 (C pred)'};
+
+function renderTable(showModels, showMeta, asFeatures) {
+  const VW=960, VH=200;
+  const startY=12, headerH=24, rowH=19, gap=6;
+  const ptW=44, trueW=58, modW=100, metaW=110;
+
+  if (!showModels.length && !showMeta) {
+    return `<rect width="${VW}" height="${VH}" fill="#0a1c28"/>` +
+      `<text x="${VW/2}" y="${VH/2+5}" text-anchor="middle" font-size="14" fill="#3a6a80" font-family="sans-serif" font-style="italic">No base models trained yet</text>`;
+  }
+
+  // Compute total width and center it
+  const totalW = ptW + gap + trueW + gap
+    + showModels.length * (modW + gap)
+    + (showMeta ? metaW + gap : 0);
+  let cx = Math.max(20, (VW - totalW) / 2);
+  const startX = cx;
+
+  const parts = [`<rect width="${VW}" height="${VH}" fill="#0a1c28"/>`];
+
+  // Header
+  parts.push(`<text x="${cx+ptW/2}" y="${startY+17}" text-anchor="middle" font-size="11" font-weight="700" fill="#7aacc0" font-family="sans-serif">Pt</text>`);
+  cx += ptW + gap;
+  parts.push(`<text x="${cx+trueW/2}" y="${startY+17}" text-anchor="middle" font-size="11" font-weight="700" fill="#7aacc0" font-family="sans-serif">True label</text>`);
+  cx += trueW + gap;
+
+  showModels.forEach(mk => {
+    const label = asFeatures ? FEAT_LABELS[mk] : MODEL_LABELS[mk];
+    parts.push(`<text x="${cx+modW/2}" y="${startY+17}" text-anchor="middle" font-size="11" font-weight="700" fill="${MODEL_COLORS[mk]}" font-family="sans-serif">${label}</text>`);
+    cx += modW + gap;
+  });
+
+  if (showMeta) {
+    parts.push(`<rect x="${cx}" y="${startY}" width="${metaW}" height="${headerH}" rx="4" fill="#1a3a2a" opacity="0.9"/>`);
+    parts.push(`<text x="${cx+metaW/2}" y="${startY+17}" text-anchor="middle" font-size="11" font-weight="700" fill="#4aaa7a" font-family="sans-serif">Meta-learner</text>`);
+  }
+
+  // Data rows
+  PTS.forEach((pt, i) => {
+    const ry = startY + headerH + 4 + i * rowH;
+    cx = startX;
+
+    if (i%2===0) {
+      parts.push(`<rect x="${startX-4}" y="${ry}" width="${totalW+8}" height="${rowH}" fill="#ffffff" opacity="0.04" rx="2"/>`);
+    }
+
+    // Point label
+    parts.push(`<text x="${cx+ptW/2}" y="${ry+13}" text-anchor="middle" font-size="10" fill="#8aaabb" font-family="sans-serif">P${pt.id}</text>`);
+    cx += ptW + gap;
+
+    // True label
+    const tc = TRUE_CLS[i]==='blue' ? '#3b82f6' : '#e05252';
+    parts.push(`<text x="${cx+trueW/2}" y="${ry+13}" text-anchor="middle" font-size="10" font-weight="700" fill="${tc}" font-family="sans-serif">${TRUE_CLS[i]==='blue'?'Blue':'Red'}</text>`);
+    cx += trueW + gap;
+
+    // Model predictions
+    showModels.forEach(mk => {
+      const pred = PREDS[mk][i];
+      const correct = pred === TRUE_CLS[i];
+      const pc = pred==='blue' ? '#3b82f6' : '#e05252';
+      parts.push(`<text x="${cx+modW/2-8}" y="${ry+13}" text-anchor="middle" font-size="10" fill="${pc}" font-family="sans-serif">${pred==='blue'?'Blue':'Red'}</text>`);
+      parts.push(`<text x="${cx+modW-8}" y="${ry+13}" font-size="12" fill="${correct?'#4aaa7a':'#fbbf24'}" font-family="sans-serif">${correct?'✓':'✗'}</text>`);
+      cx += modW + gap;
+    });
+
+    // Meta prediction
+    if (showMeta) {
+      const mp = META_PRED[i];
+      const mc = mp === TRUE_CLS[i];
+      const mpc = mp==='blue' ? '#3b82f6' : '#e05252';
+      parts.push(`<text x="${cx+metaW/2-8}" y="${ry+13}" text-anchor="middle" font-size="10" font-weight="700" fill="${mpc}" font-family="sans-serif">${mp==='blue'?'Blue':'Red'}</text>`);
+      parts.push(`<text x="${cx+metaW-8}" y="${ry+13}" font-size="12" fill="${mc?'#4aaa7a':'#fbbf24'}" font-family="sans-serif">${mc?'✓':'✗'}</text>`);
+    }
+  });
+
+  return parts.join('\n');
+}
+
+// ─── Steps ───────────────────────────────────────────────────────────────────
+const STEPS = [
+  {
+    title: 'Step 1 — The Stacking Idea',
+    plotLabel: 'Feature Space',
+    reg: 'none', errors: null,
+    table: {models:[], meta:false, feat:false},
+    tableLabel: 'Predictions Table (no models trained yet)',
+    body: `<p><strong>Stacking</strong> (stacked generalization) trains multiple different base models, then trains a <em>meta-learner</em> whose inputs are the base models' predictions rather than the original features.</p>
+      <p>Unlike bagging (averaging many identical model types) or boosting (chaining corrective models), stacking deliberately mixes <strong>different model architectures</strong> to capture different patterns in the data.</p>
+      <ul>
+        <li><strong>Level 0:</strong> base models — each trained on the original features</li>
+        <li><strong>Level 1:</strong> meta-learner — trained on base model predictions as features</li>
+      </ul>
+      <div class="callout">The core insight: different models make different errors. If you can learn <em>when</em> each base model is right and wrong, you can combine them more intelligently than a simple vote.</div>`,
+  },
+  {
+    title: 'Step 2 — The Dataset',
+    plotLabel: 'Feature Space',
+    reg: 'none', errors: null,
+    table: {models:[], meta:false, feat:false},
+    tableLabel: 'Predictions Table (no models trained yet)',
+    body: `<p>Same 8-point dataset as the other walkthroughs. Four <span class="tag-b">Blue</span> points, four <span class="tag-r">Red</span> points.</p>
+      <p>The challenge: P4 (5, 7) is a <span class="hl">blue outlier sitting in red territory</span>. Any model with a single straight boundary will either misclassify P4 or cause a mistake elsewhere near the boundary.</p>
+      <p>We'll train three base models, each with a different decision boundary. Watch how each one makes a <em>different</em> mistake — and how the meta-learner exploits that.</p>`,
+  },
+  {
+    title: 'Step 3 — Base Model A: x₁ < 3.5 → Blue',
+    plotLabel: 'Model A — vertical split at x₁ = 3.5',
+    reg: 'A', errors: [4],
+    table: {models:['A'], meta:false, feat:false},
+    tableLabel: 'Predictions Table — Model A',
+    body: `<p>Model A draws a vertical boundary at x₁ = 3.5:</p>
+      <div class="math-block">x₁ &lt; 3.5  →  Blue<br>x₁ ≥ 3.5  →  Red</div>
+      <p>This gets 7 of 8 points correct. The miss: <strong>P4 (5, 7)</strong> — the blue outlier. Since x₁ = 5 ≥ 3.5, Model A predicts <span class="bad">Red. Wrong.</span></p>
+      <p>The predictions table below shows Model A's output for every point. ✗ marks the error, ✓ marks a correct prediction.</p>
+      <div class="callout">Model A's boundary is clean and generalizes well for the left cluster. Its blind spot is the upper-right region, where it can't distinguish the blue outlier from the red cluster.</div>`,
+  },
+  {
+    title: 'Step 4 — Base Model B: x₂ > 5.5 → Blue',
+    plotLabel: 'Model B — horizontal split at x₂ = 5.5',
+    reg: 'B', errors: [3],
+    table: {models:['A','B'], meta:false, feat:false},
+    tableLabel: 'Predictions Table — Models A and B',
+    body: `<p>Model B draws a horizontal boundary at x₂ = 5.5:</p>
+      <div class="math-block">x₂ &gt; 5.5  →  Blue<br>x₂ ≤ 5.5  →  Red</div>
+      <p>Also 7 of 8 correct — but a <em>different</em> 7. Model B correctly handles P4 (x₂ = 7 > 5.5 → Blue ✓). Its miss: <strong>P3 (1, 4)</strong>, a blue point with low x₂, predicted <span class="bad">Red. Wrong.</span></p>
+      <p>Look at the table: where Model A was wrong on P4, Model B is right. Where Model B is wrong on P3, Model A is right. <span class="hl">Their errors don't overlap.</span></p>
+      <div class="callout">Two models, equal accuracy, complementary blind spots. The meta-learner can exploit this structure — a single model couldn't.</div>`,
+  },
+  {
+    title: 'Step 5 — Base Model C: L-shaped boundary',
+    plotLabel: 'Model C — x₁ > 4 AND x₂ < 5 → Red',
+    reg: 'C', errors: [8],
+    table: {models:['A','B','C'], meta:false, feat:false},
+    tableLabel: 'Predictions Table — All Three Base Models',
+    body: `<p>Model C uses an L-shaped boundary:</p>
+      <div class="math-block">x₁ &gt; 4  AND  x₂ &lt; 5  →  Red<br>otherwise               →  Blue</div>
+      <p>Also 7 of 8 correct. Its miss: <strong>P8 (6, 5)</strong> — a red point just at the x₂ = 5 boundary, predicted <span class="bad">Blue. Wrong.</span></p>
+      <p>Three models, three unique errors: A misses P4, B misses P3, C misses P8. <span class="hl">No single point is missed by all three.</span></p>
+      <div class="callout">This is the prerequisite for stacking to help: base models must make <em>different</em> errors. If all three missed P4, the meta-learner would have nothing to work with on that point.</div>`,
+  },
+  {
+    title: 'Step 6 — The Error Pattern',
+    plotLabel: 'Feature Space — three error points highlighted',
+    reg: 'none', errors: [3,4,8],
+    table: {models:['A','B','C'], meta:false, feat:false},
+    tableLabel: 'Predictions Table — Error Pattern Across All Three Models',
+    body: `<p>Look at the predictions table. Three points have disagreement among models:</p>
+      <ul>
+        <li><strong>P4 (Blue):</strong> A=Red ✗, B=Blue ✓, C=Blue ✓ → 2 of 3 correct</li>
+        <li><strong>P3 (Blue):</strong> A=Blue ✓, B=Red ✗, C=Blue ✓ → 2 of 3 correct</li>
+        <li><strong>P8 (Red):</strong> A=Red ✓, B=Red ✓, C=Blue ✗ → 2 of 3 correct</li>
+      </ul>
+      <p>All other points: unanimous agreement — all three are right.</p>
+      <p>A simple majority vote would get all 8 correct here. But a meta-learner can go further — it can learn <em>correlations</em> like "when A says Red but B and C say Blue, the answer is usually Blue." That's more powerful than counting votes.</p>
+      <div class="callout">The scatter plot highlights the three contested points in gold. These are the examples where the meta-learner earns its existence.</div>`,
+  },
+  {
+    title: 'Step 7 — Predictions Become Features',
+    plotLabel: 'Feature Space',
+    reg: 'none', errors: null,
+    table: {models:['A','B','C'], meta:false, feat:true},
+    tableLabel: 'Meta-Learner Training Data — Predictions as Features',
+    body: `<p>For the meta-learner, the original features x₁ and x₂ disappear. Each training example is now described by <strong>the base models' predictions</strong>:</p>
+      <div class="math-block">Meta features: (A pred, B pred, C pred)<br>Meta target:   true label<br><br>
+P4: (Red, Blue, Blue)  →  Blue<br>
+P3: (Blue, Red, Blue)  →  Blue<br>
+P8: (Red, Red, Blue)   →  Red<br>
+All others: unanimous  →  correct by agreement</div>
+      <p>The meta-learner trains on this table. It learns patterns like: "when A says Red but B and C say Blue, the true answer is Blue." The column headers in the table below reflect this reframing.</p>
+      <div class="callout"><strong>Key warning coming in the next step:</strong> training base models and the meta-learner on the same data causes overfitting. The base models have memorized the training points, so their predictions look unrealistically clean to the meta-learner.</div>`,
+  },
+  {
+    title: 'Step 8 — The Overfitting Risk and the CV Fix',
+    plotLabel: 'Feature Space',
+    reg: 'none', errors: null,
+    table: {models:['A','B','C'], meta:false, feat:true},
+    tableLabel: 'Cross-Validated Predictions (conceptual)',
+    body: `<p>The subtle danger in stacking:</p>
+      <ol>
+        <li>Train Model A on all 8 points</li>
+        <li>Ask Model A to predict those same 8 points</li>
+        <li>Model A has memorized them — predictions are too clean</li>
+        <li>Meta-learner trains on those clean predictions, thinks Model A is more reliable than it really is on unseen data</li>
+      </ol>
+      <p>The fix: <strong>cross-validated predictions</strong>. For each fold, train base models on the other folds and predict the held-out fold. Each training point's meta-feature was predicted by a model that had never seen it.</p>
+      <div class="math-block">For each fold f = 1 … k:<br>
+  Train base models on all folds except f<br>
+  Predict fold f  →  these are the meta features for fold f<br><br>
+Train meta-learner on all N cross-validated predictions</div>
+      <div class="callout">sklearn's <code>StackingClassifier</code> does this automatically via its <code>cv</code> parameter. With small datasets, use leave-one-out CV to maximize the training signal for the meta-learner.</div>`,
+  },
+  {
+    title: 'Step 9 — Inference on a New Point',
+    plotLabel: 'Ensemble Decision Boundary (meta-learner result)',
+    reg: 'ensemble', errors: null,
+    table: {models:['A','B','C'], meta:true, feat:false},
+    tableLabel: 'Full Predictions Table — with Meta-Learner Output',
+    body: `<p>At inference time, stacking is a two-stage pipeline:</p>
+      <ol>
+        <li>Pass the new point through all three base models → get (A pred, B pred, C pred)</li>
+        <li>Feed that triple to the meta-learner → get the final prediction</li>
+      </ol>
+      <p>Example — new point at <strong>(4, 6)</strong>:</p>
+      <div class="math-block">Model A: x₁ = 4 ≥ 3.5         →  Red<br>
+Model B: x₂ = 6 &gt; 5.5       →  Blue<br>
+Model C: x₁ = 4, not &gt; 4   →  Blue<br>
+Meta input: (Red, Blue, Blue)  →  <strong style="color:#3b82f6">Blue ✓</strong></div>
+      <p>The ensemble boundary (left) preserves the blue island in the upper-right even though Model A alone calls it Red. The meta-learner has learned to trust B and C over A in that region.</p>
+      <div class="callout">The predictions table now shows the meta-learner column. Every point is correctly classified — the three complementary error patterns cancel completely.</div>`,
+  },
+  {
+    title: 'Step 10 — When Stacking Wins and Loses',
+    plotLabel: 'Ensemble Decision Boundary (meta-learner result)',
+    reg: 'ensemble', errors: null,
+    table: {models:['A','B','C'], meta:true, feat:false},
+    tableLabel: 'Full Predictions Table — with Meta-Learner Output',
+    body: `<p><strong>Stacking wins when:</strong></p>
+      <ul>
+        <li>Base models make <em>different</em> errors — genuinely complementary strengths</li>
+        <li>You have enough data for the meta-learner to detect reliable patterns (not noise)</li>
+        <li>You're optimizing hard for accuracy and can afford extra complexity</li>
+      </ul>
+      <p><strong>Stacking struggles when:</strong></p>
+      <ul>
+        <li>Base models make the <em>same</em> errors — the meta-learner has nothing to exploit</li>
+        <li>Dataset is small — CV predictions are noisy and the meta-learner overfits</li>
+        <li>Inference speed matters — every prediction runs all base models</li>
+        <li>Interpretability is required — two model layers are hard to explain</li>
+      </ul>
+      <p><strong>vs. bagging and boosting:</strong> Bagging (Random Forest) reduces variance by averaging many versions of the same model type trained on different data. Boosting reduces bias by chaining corrective models. Stacking is the only method that intentionally mixes <em>different architectures</em> and learns how to weight them.</p>
+      <div class="callout">In practice: try XGBoost first. If you're within 1–2% of your target and can invest in complexity, stacking is often the next lever to pull — especially if you have models from different families (tree-based, linear, neural) that make meaningfully different errors.</div>`,
+  },
+];
+
+// ─── Navigation ───────────────────────────────────────────────────────────────
+let currentStep = 0;
+
+function render() {
+  const s = STEPS[currentStep];
+  document.getElementById('scatter').innerHTML   = renderScatter(s.reg, s.errors);
+  document.getElementById('pred-table').innerHTML = renderTable(s.table.models, s.table.meta, s.table.feat);
+  document.getElementById('plot-label').textContent  = s.plotLabel;
+  document.getElementById('table-label').textContent = s.tableLabel;
+  document.getElementById('step-title').textContent  = s.title;
+  document.getElementById('step-body').innerHTML     = s.body;
+  document.getElementById('step-counter').textContent = `Step ${currentStep+1} of ${STEPS.length}`;
+  document.getElementById('prev-btn').disabled = currentStep === 0;
+  document.getElementById('next-btn').disabled = currentStep === STEPS.length - 1;
+
+  const dots = document.getElementById('dots');
+  dots.innerHTML = '';
+  STEPS.forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'dot' + (i < currentStep ? ' done' : i === currentStep ? ' active' : '');
+    dots.appendChild(d);
+  });
+}
+
+function changeStep(delta) {
+  const next = currentStep + delta;
+  if (next >= 0 && next < STEPS.length) {
+    currentStep = next;
+    render();
+    window.scrollTo({top:0, behavior:'smooth'});
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') changeStep(1);
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   changeStep(-1);
+});
+
+render();
+</script>
+</body>
+</html>
