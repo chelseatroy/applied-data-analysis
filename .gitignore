@@ -3,3 +3,4 @@
 .DS_Store
 env/
 scratch_landsat_test*.ipynb
+instructor/
