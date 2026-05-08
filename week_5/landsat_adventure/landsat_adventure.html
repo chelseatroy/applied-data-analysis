@@ -1222,7 +1222,7 @@ function step11(){
           </tr>`;
         }).join("");
         resultsHtml = `
-        <div class="panel"><div class="panel-hdr">Results — ${strat==='ndmi'?'NDMI Feature Engineering':'Class Weighting'}</div><div class="panel-body">
+        <div class="panel"><div class="panel-hdr">Results — ${{ndmi:"NDMI Feature Engineering",weighted:"Class Weighting",smote:"SMOTE Oversampling"}[strat]}</div><div class="panel-body">
           <p style="font-size:.87rem;color:#4a3060;margin-bottom:10px">${stratNote}</p>
           <p style="font-size:.87rem;color:#4a3060;margin-bottom:12px">
             New accuracy: <strong>${newRes.score.toFixed(3)}</strong> vs. baseline <strong>${baseRes.score.toFixed(3)}</strong>
@@ -1468,6 +1468,12 @@ This notebook reproduces your decisions as runnable Python code with matplotlib 
 | Model | ${mname} |
 | Hyperparameters | ${hpStr} |
 | Improvement Strategy | ${stratLabel} |`
+  ));
+
+  // ── Install dependencies ──────────────────────────────────────────────────
+  cells.push(_md("## Setup — Install Dependencies\n\nRun this cell first. `%pip` installs into the active kernel; safe to re-run."));
+  cells.push(_code(
+`%pip install -q "numpy>=1.26" "matplotlib>=3.10" "scikit-learn>=1.5"${strat==="smote" ? ' "imbalanced-learn>=0.14"' : ""}`
   ));
 
   // ── Imports ───────────────────────────────────────────────────────────────
@@ -1770,8 +1776,7 @@ ${beforeAfterPlot("Weighted")}`
     }
   } else if(strat==="smote"){
     cells.push(_code(
-`# pip install imbalanced-learn
-from imblearn.over_sampling import SMOTE
+`from imblearn.over_sampling import SMOTE
 
 print("Class counts before SMOTE:", {lbl: int((y_train == lbl).sum()) for lbl in CLASS_LABELS})
 sm = SMOTE(random_state=42, k_neighbors=5)

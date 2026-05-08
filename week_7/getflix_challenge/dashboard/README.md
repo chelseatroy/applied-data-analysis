@@ -4,8 +4,7 @@ Instructor-facing live dashboard for the Getflix ML operationalization activity.
 
 ## Deployed app
 
-<!-- Update this URL after deploying to Render -->
-**URL:** _not yet deployed_
+**URL:** https://getflix-inference-dashboard.onrender.com
 
 ## What it does
 

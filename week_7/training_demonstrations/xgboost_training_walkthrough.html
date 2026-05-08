@@ -377,11 +377,12 @@ function renderScatter(step) {
     if (step.showResid) {
       const len = Math.abs(resid) * 30;
       const col = resid > 0 ? '#4ade80' : '#f87171';
-      const arrowY = y - r - 5;
       if (resid > 0) {
+        const arrowY = y - r - 5;
         s += `<line x1="${x}" y1="${arrowY}" x2="${x}" y2="${arrowY - len}" stroke="${col}" stroke-width="2.5"/>`;
         s += `<polygon points="${x},${arrowY-len-6} ${x-4},${arrowY-len+2} ${x+4},${arrowY-len+2}" fill="${col}"/>`;
       } else {
+        const arrowY = y + r + 22;
         s += `<line x1="${x}" y1="${arrowY}" x2="${x}" y2="${arrowY + len}" stroke="${col}" stroke-width="2.5"/>`;
         s += `<polygon points="${x},${arrowY+len+6} ${x-4},${arrowY+len-2} ${x+4},${arrowY+len-2}" fill="${col}"/>`;
       }

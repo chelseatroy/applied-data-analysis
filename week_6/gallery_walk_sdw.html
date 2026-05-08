@@ -1,0 +1,2165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Statistics Done Wrong — Gallery Walk</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #1e2132;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 10px 8px;
+}
+
+.slide-wrapper {
+  width: 100%;
+  max-width: 1120px;
+  aspect-ratio: 16 / 9;
+  position: relative;
+}
+
+.slide {
+  display: none;
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0; left: 0;
+}
+.slide.active { display: block; }
+
+/* ── flip card ── */
+.card { width: 100%; height: 100%; perspective: 1400px; }
+
+.card-inner {
+  width: 100%; height: 100%;
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.52s ease;
+}
+.card.flipped .card-inner { transform: rotateY(180deg); }
+
+.card-face {
+  position: absolute;
+  width: 100%; height: 100%;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  display: flex;
+  flex-direction: column;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.card-back { transform: rotateY(180deg); }
+
+/* ── static card (title/debrief) ── */
+.static-card {
+  width: 100%; height: 100%;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── header ── */
+.card-header {
+  padding: 9px 26px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  border-bottom: 1px solid #ececec;
+}
+.topic-badge {
+  font-size: 12px; font-weight: 700;
+  letter-spacing: .07em; text-transform: uppercase;
+  padding: 3px 12px; border-radius: 20px; color: white;
+}
+.station-label { font-size: 12px; color: #bbb; margin-left: auto; }
+
+/* ── front body ── */
+.front-body {
+  flex: 1;
+  padding: 10px 26px 4px;
+  display: flex;
+  gap: 18px;
+  overflow: hidden;
+  min-height: 0;
+}
+.front-text {
+  flex: 0 0 56%;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+.study-title { font-size: 24px; font-weight: 700; color: #1a1a2e; line-height: 1.25; }
+.study-source { font-size: 13px; color: #bbb; font-style: italic; }
+.abstract-box {
+  border-left: 3.5px solid;
+  padding: 10px 15px;
+  border-radius: 0 6px 6px 0;
+  font-size: 20px;
+  line-height: 1.6;
+  color: #2d2d2d;
+  flex: 1;
+  overflow: hidden;
+}
+.kf { font-weight: 700; }
+.meta-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { background: #f2f2f2; border-radius: 5px; padding: 4px 10px; font-size: 13px; color: #555; }
+
+.front-illo {
+  flex: 0 0 44%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+.front-illo svg { width: 100%; max-height: 260px; }
+
+/* ── front footer ── */
+.front-footer {
+  padding: 6px 26px 10px;
+  display: flex;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+.flip-btn {
+  border: none; color: white;
+  font-size: 13.5px; font-weight: 600;
+  padding: 7px 20px; border-radius: 6px;
+  cursor: pointer;
+  transition: filter .15s;
+}
+.flip-btn:hover { filter: brightness(1.15); }
+
+/* ── back body ── */
+.back-body {
+  flex: 1;
+  padding: 8px 26px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  overflow: hidden;
+  min-height: 0;
+}
+.back-section {
+  border-radius: 6px;
+  padding: 7px 13px;
+}
+.back-section-label {
+  font-size: 10.5px; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase;
+  margin-bottom: 5px;
+}
+.back-section p { font-size: 14.5px; line-height: 1.62; color: #333; }
+.takeaway-box {
+  border-radius: 6px;
+  padding: 9px 15px;
+  color: white;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.takeaway-label {
+  font-size: 10px; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase;
+  opacity: .75; margin-bottom: 4px;
+}
+.ml-impact-box {
+  background: #1C2951;
+  border-radius: 6px;
+  padding: 9px 13px;
+}
+.ml-impact-label {
+  font-size: 10.5px; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase;
+  color: #64B5F6; margin-bottom: 5px;
+}
+.ml-impact-box p { font-size: 14px; line-height: 1.6; color: #E3F2FD; }
+
+/* ── back footer ── */
+.back-footer {
+  padding: 6px 26px 10px;
+  display: flex;
+  justify-content: flex-start;
+  flex-shrink: 0;
+}
+
+/* ── title / debrief ── */
+.center-layout {
+  flex: 1;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 28px 48px;
+  text-align: center;
+  gap: 13px;
+}
+.eyebrow { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: #aaa; font-weight: 600; }
+.big-title { font-size: 40px; font-weight: 800; color: #1a1a2e; line-height: 1.15; }
+.subtitle { font-size: 17px; color: #555; max-width: 680px; line-height: 1.55; }
+.badge-row { display: flex; gap: 9px; flex-wrap: wrap; justify-content: center; }
+.big-badge { padding: 5px 16px; border-radius: 20px; font-size: 12.5px; font-weight: 600; }
+.hint { font-size: 12px; color: #bbb; }
+
+/* ── debrief grid ── */
+.debrief-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 9px;
+  width: 100%; max-width: 1000px;
+  text-align: left; margin-top: 4px;
+}
+.debrief-card { border-radius: 7px; padding: 11px 13px; }
+.debrief-label { font-weight: 700; font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 5px; }
+.debrief-card p { font-size: 11.5px; color: #444; line-height: 1.5; }
+
+/* ── nav ── */
+nav { display: flex; align-items: center; gap: 20px; margin-top: 11px; color: white; }
+nav button {
+  background: rgba(255,255,255,.14); border: none; color: white;
+  padding: 7px 22px; border-radius: 6px; cursor: pointer;
+  font-size: 14px; font-weight: 500;
+  transition: background .15s;
+}
+nav button:hover:not(:disabled) { background: rgba(255,255,255,.27); }
+nav button:disabled { opacity: .3; cursor: default; }
+#slide-counter { font-size: 13px; opacity: .6; min-width: 110px; text-align: center; }
+</style>
+</head>
+<body>
+
+<div class="slide-wrapper">
+
+<!-- ══════════ SLIDE 0: TITLE ══════════ -->
+<div class="slide active" id="slide-0">
+<div class="static-card">
+<div style="background:#2C3E50;height:6px;flex-shrink:0;"></div>
+<div class="center-layout">
+  <div class="eyebrow">Statistics Done Wrong</div>
+  <h1 class="big-title">Gallery Walk</h1>
+  <p class="subtitle">Eight common statistical errors across nineteen real-world studies. Read each abstract, discuss the prompt, then flip to see what went wrong.</p>
+  <div class="badge-row">
+    <span class="big-badge" style="background:#FDEDEC;color:#B03A2E;">Causation &amp; Confounding</span>
+    <span class="big-badge" style="background:#FEF5E7;color:#9C640C;">Survivorship Bias</span>
+    <span class="big-badge" style="background:#EAF2FF;color:#1A5276;">Simpson's Paradox</span>
+    <span class="big-badge" style="background:#E8F8F5;color:#117A65;">P-Hacking &amp; Multiple Testing</span>
+    <span class="big-badge" style="background:#F4ECF7;color:#6C3483;">Circular Analysis</span>
+    <span class="big-badge" style="background:#EAFAF1;color:#1E8449;">Dichotomization</span>
+    <span class="big-badge" style="background:#FEF9E7;color:#7E5109;">Pseudoreplication</span>
+    <span class="big-badge" style="background:#E0F2F7;color:#1A6B8A;">Statistical vs. Clinical Significance</span>
+  </div>
+  <p class="hint">5 minutes per station &nbsp;·&nbsp; Arrow keys or buttons to navigate &nbsp;·&nbsp; Click "Reveal" to flip each card</p>
+</div>
+</div>
+</div>
+
+<!-- ══════════ SLIDE 1: Coffee & Mortality ══════════ -->
+<div class="slide" id="slide-1">
+<div class="card" id="card-1">
+<div class="card-inner">
+<div class="card-face card-front">
+  <div style="background:#888;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="station-label" style="margin-left:0;">Station 1 of 19</span>
+  </div>
+  <div class="front-body">
+    <div class="front-text">
+      <div>
+        <div class="study-title">Coffee Consumption and All-Cause Mortality: 12-Year Follow-Up from a Prospective Cohort</div>
+        <div class="study-source">American Journal of Epidemiology, 2018 &nbsp;·&nbsp; N = 48,920</div>
+      </div>
+      <div class="abstract-box" style="border-color:#B03A2E;background:#FDEDEC;">
+        Among 48,920 adults in a prospective cohort, those consuming <span class="kf">3–4 cups of coffee daily showed 18% lower all-cause mortality</span> over 12-year follow-up compared to non-drinkers (HR = 0.82, 95% CI: 0.77–0.88), after adjustment for age, sex, BMI, and smoking status. The association was dose-dependent up to 4 cups/day. The inverse association held for both caffeinated and decaffeinated coffee.
+      </div>
+      <div class="meta-chips">
+        <span class="chip"><strong>Design:</strong> Prospective cohort</span>
+        <span class="chip"><strong>Adjusted for:</strong> age, sex, BMI, smoking</span>
+        <span class="chip"><strong>Key stat:</strong> HR = 0.82 (95% CI: 0.77–0.88)</span>
+      </div>
+    </div>
+    <div class="front-illo">
+      <svg viewBox="0 0 210 190" width="95%" style="max-height:190px;">
+        <!-- mug body -->
+        <rect x="65" y="68" width="65" height="72" rx="7" fill="#6F4E37"/>
+        <ellipse cx="97" cy="70" rx="32" ry="7" fill="#8B6347"/>
+        <!-- handle -->
+        <path d="M130 82 Q155 82 155 104 Q155 124 130 124" fill="none" stroke="#4A2F1A" stroke-width="5" stroke-linecap="round"/>
+        <!-- steam -->
+        <path d="M82 56 Q87 43 82 30" fill="none" stroke="#ccc" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="M97 52 Q102 39 97 26" fill="none" stroke="#ccc" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="M112 56 Q117 43 112 30" fill="none" stroke="#ccc" stroke-width="2.5" stroke-linecap="round"/>
+        <!-- confounder bubbles -->
+        <ellipse cx="30" cy="80" rx="28" ry="14" fill="#FFF8DC" stroke="#DAA520" stroke-width="1.5"/>
+        <text x="30" y="84" font-size="10" text-anchor="middle" fill="#7D6608" font-weight="600">SES</text>
+        <ellipse cx="30" cy="118" rx="28" ry="14" fill="#FFF8DC" stroke="#DAA520" stroke-width="1.5"/>
+        <text x="30" y="122" font-size="9.5" text-anchor="middle" fill="#7D6608" font-weight="600">Exercise</text>
+        <ellipse cx="172" cy="80" rx="32" ry="14" fill="#FFF8DC" stroke="#DAA520" stroke-width="1.5"/>
+        <text x="172" y="84" font-size="9.5" text-anchor="middle" fill="#7D6608" font-weight="600">Diet</text>
+        <ellipse cx="172" cy="118" rx="32" ry="14" fill="#FFF8DC" stroke="#DAA520" stroke-width="1.5"/>
+        <text x="172" y="122" font-size="9" text-anchor="middle" fill="#7D6608" font-weight="600">Non-smoking</text>
+        <!-- dashed lines -->
+        <line x1="58" y1="90" x2="58" y2="84" stroke="#DAA520" stroke-width="1" stroke-dasharray="3,2" opacity=".5"/>
+        <line x1="58" y1="110" x2="58" y2="116" stroke="#DAA520" stroke-width="1" stroke-dasharray="3,2" opacity=".5"/>
+        <line x1="130" y1="90" x2="140" y2="84" stroke="#DAA520" stroke-width="1" stroke-dasharray="3,2" opacity=".5"/>
+        <line x1="130" y1="110" x2="140" y2="116" stroke="#DAA520" stroke-width="1" stroke-dasharray="3,2" opacity=".5"/>
+        <!-- question -->
+        <text x="105" y="178" font-size="10.5" text-anchor="middle" fill="#888" font-style="italic">Is it the coffee — or the lifestyle?</text>
+      </svg>
+    </div>
+  </div>
+  <div class="front-footer">
+    <button class="flip-btn" style="background:#B03A2E;" onclick="flip(1)">Reveal Explanation →</button>
+  </div>
+</div><!-- /front -->
+<div class="card-face card-back">
+  <div style="background:#B03A2E;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="topic-badge" style="background:#B03A2E;">Causation &amp; Confounding</span>
+    <span class="station-label">Station 1 — Explanation</span>
+  </div>
+  <div class="back-body">
+    <div class="back-section" style="background:#FDEDEC;">
+      <div class="back-section-label" style="color:#B03A2E;">What's Wrong</div>
+      <p>Coffee drinkers cluster with a constellation of healthy behaviors — higher income, regular exercise, Mediterranean diet, historically lower smoking rates — that aren't fully disentangled by the listed adjustments. Residual confounding from unmeasured or poorly measured variables remains substantial. Smoking adjustment at a single time point doesn't capture lifetime exposure, and "BMI" doesn't capture diet quality. The exposure is correlated with the real causes through socioeconomic and cultural channels surveys can't fully untangle.</p>
+    </div>
+    <div class="back-section" style="background:#f7f7f7;border-left:3px solid #B03A2E;">
+      <div class="back-section-label" style="color:#B03A2E;">What to Do Instead</div>
+      <p>Mendelian randomization uses genetic variants that affect caffeine metabolism (e.g., <em>CYP1A2</em>) as instrumental variables — they cause variation in coffee intake without causing variation in other lifestyle factors. This design breaks confounding by lifestyle clustering. Short-term RCTs of coffee consumption exist; long-term mortality trials are impractical, which is part of why the question remains open.</p>
+    </div>
+    <div class="ml-impact-box">
+      <div class="ml-impact-label">ML Impact</div>
+      <p>Training data encodes confounded associations as ground truth. A mortality-prediction model may learn that coffee intake predicts longevity — because coffee drinkers cluster with healthy behaviors — and fail when deployed in a population where that cultural correlation doesn't hold.</p>
+    </div>
+    <div class="takeaway-box" style="background:#B03A2E;">
+      <div class="takeaway-label">Core Principle</div>
+      Observational associations often measure a lifestyle cluster, not a single cause. Adjustment shifts residual confounding to unmeasured variables — it never eliminates it.
+    </div>
+  </div>
+  <div class="back-footer">
+    <button class="flip-btn" style="background:#888;" onclick="flip(1)">← Back to Abstract</button>
+  </div>
+</div><!-- /back -->
+</div></div></div>
+
+<!-- ══════════ SLIDE 2: Green Space & Cognition ══════════ -->
+<div class="slide" id="slide-2">
+<div class="card" id="card-2">
+<div class="card-inner">
+<div class="card-face card-front">
+  <div style="background:#888;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="station-label" style="margin-left:0;">Station 2 of 19</span>
+  </div>
+  <div class="front-body">
+    <div class="front-text">
+      <div>
+        <div class="study-title">Residential Green Space and the Rate of Cognitive Decline in Older Adults</div>
+        <div class="study-source">Environmental Health Perspectives, 2022 &nbsp;·&nbsp; N = 11,348 &nbsp;·&nbsp; Ages 55+, 47 U.S. metro areas</div>
+      </div>
+      <div class="abstract-box" style="border-color:#B03A2E;background:#FDEDEC;">
+        Using satellite-derived NDVI (Normalized Difference Vegetation Index) as a measure of neighborhood greenness, we assessed cognitive function annually in 11,348 adults aged 55+. Those in the highest quartile of green space showed <span class="kf">24% slower cognitive decline over 10 years</span> (β = 0.31, SE = 0.06, p &lt; 0.001) compared to the lowest quartile, adjusting for baseline cognition, education, physical activity, and PM₂.₅ air pollution.
+      </div>
+      <div class="meta-chips">
+        <span class="chip"><strong>Exposure:</strong> Satellite NDVI</span>
+        <span class="chip"><strong>Adjusted for:</strong> cognition, education, activity, PM₂.₅</span>
+        <span class="chip"><strong>Key stat:</strong> β = 0.31, p &lt; 0.001</span>
+      </div>
+    </div>
+    <div class="front-illo">
+      <svg viewBox="0 0 210 190" width="95%" style="max-height:190px;">
+        <!-- title label -->
+        <text x="105" y="14" font-size="10" text-anchor="middle" fill="#888">NDVI (satellite greenness)</text>
+        <!-- left: greenery -->
+        <rect x="10" y="22" width="80" height="100" rx="6" fill="#E8F5E9" stroke="#4CAF50" stroke-width="1.5"/>
+        <text x="50" y="38" font-size="9.5" text-anchor="middle" fill="#2E7D32" font-weight="600">High NDVI</text>
+        <!-- tree icons -->
+        <polygon points="50,45 38,75 62,75" fill="#4CAF50"/>
+        <rect x="47" y="75" width="6" height="12" fill="#795548"/>
+        <polygon points="34,52 24,75 44,75" fill="#388E3C"/>
+        <rect x="31" y="75" width="5" height="10" fill="#795548"/>
+        <polygon points="66,52 56,75 76,75" fill="#388E3C"/>
+        <rect x="63" y="75" width="5" height="10" fill="#795548"/>
+        <text x="50" y="100" font-size="8.5" text-anchor="middle" fill="#555">wealthy area</text>
+        <text x="50" y="112" font-size="8" text-anchor="middle" fill="#888">better healthcare</text>
+        <text x="50" y="122" font-size="8" text-anchor="middle" fill="#888">lower stress</text>
+        <!-- right: concrete -->
+        <rect x="120" y="22" width="80" height="100" rx="6" fill="#F5F5F5" stroke="#9E9E9E" stroke-width="1.5"/>
+        <text x="160" y="38" font-size="9.5" text-anchor="middle" fill="#555" font-weight="600">Low NDVI</text>
+        <rect x="130" y="45" width="18" height="35" fill="#9E9E9E"/>
+        <rect x="153" y="52" width="15" height="28" fill="#BDBDBD"/>
+        <rect x="173" y="48" width="20" height="32" fill="#9E9E9E"/>
+        <text x="160" y="100" font-size="8.5" text-anchor="middle" fill="#555">lower-income area</text>
+        <text x="160" y="112" font-size="8" text-anchor="middle" fill="#888">less healthcare</text>
+        <text x="160" y="122" font-size="8" text-anchor="middle" fill="#888">more stressors</text>
+        <!-- arrow and label -->
+        <text x="105" y="148" font-size="11" text-anchor="middle" fill="#B03A2E" font-weight="700">NDVI ≈ SES — not just nature</text>
+        <text x="105" y="164" font-size="10" text-anchor="middle" fill="#888">Adjusting for "income" doesn't capture all of this</text>
+      </svg>
+    </div>
+  </div>
+  <div class="front-footer">
+    <button class="flip-btn" style="background:#B03A2E;" onclick="flip(2)">Reveal Explanation →</button>
+  </div>
+</div>
+<div class="card-face card-back">
+  <div style="background:#B03A2E;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="topic-badge" style="background:#B03A2E;">Causation &amp; Confounding</span>
+    <span class="station-label">Station 2 — Explanation</span>
+  </div>
+  <div class="back-body">
+    <div class="back-section" style="background:#FDEDEC;">
+      <div class="back-section-label" style="color:#B03A2E;">What's Wrong</div>
+      <p>Neighborhood NDVI is a proxy for wealth. Wealthier neighborhoods have more green space, better air quality, lower crime, less chronic stress, and residents with better access to healthcare and healthier baseline habits. NDVI is measuring socioeconomic status from space as much as it's measuring nature. Physical activity and PM₂.₅ adjustments are both measured with substantial error (self-report; annual averages), which means residual confounding from these variables persists in the adjusted model.</p>
+    </div>
+    <div class="back-section" style="background:#f7f7f7;border-left:3px solid #B03A2E;">
+      <div class="back-section-label" style="color:#B03A2E;">What to Do Instead</div>
+      <p>Natural experiments — construction of new parks, urban greening programs — enable difference-in-differences designs that compare cognitive trajectories before and after green space arrives in a neighborhood. These use neighborhoods as their own controls, eliminating time-stable confounders. Within-person longitudinal models that track individuals across residential moves are even more robust to individual-level confounding.</p>
+    </div>
+    <div class="ml-impact-box">
+      <div class="ml-impact-label">ML Impact</div>
+      <p>Neighborhood and geographic features routinely proxy for SES in ML datasets. A model that learns a "greenness → cognitive health" signal is likely learning wealth, and interventions built from its predictions won't improve outcomes if the real driver is the socioeconomic conditions that co-occur with green space.</p>
+    </div>
+    <div class="takeaway-box" style="background:#B03A2E;">
+      <div class="takeaway-label">Core Principle</div>
+      When your exposure is highly correlated with SES, no regression adjustment fully solves the problem. SES is multidimensional, poorly measured, and deeply intertwined with almost every health outcome.
+    </div>
+  </div>
+  <div class="back-footer">
+    <button class="flip-btn" style="background:#888;" onclick="flip(2)">← Back to Abstract</button>
+  </div>
+</div>
+</div></div></div>
+
+<!-- ══════════ SLIDE 3: WWII Aircraft ══════════ -->
+<div class="slide" id="slide-3">
+<div class="card" id="card-3">
+<div class="card-inner">
+<div class="card-face card-front">
+  <div style="background:#888;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="station-label" style="margin-left:0;">Station 3 of 19</span>
+  </div>
+  <div class="front-body">
+    <div class="front-text">
+      <div>
+        <div class="study-title">Where Should We Add Armor to Combat Aircraft? (1943)</div>
+        <div class="study-source">Statistical Research Group, Columbia University &nbsp;·&nbsp; WWII U.S. Army Air Forces</div>
+      </div>
+      <div class="abstract-box" style="border-color:#9C640C;background:#FEF5E7;">
+        Engineers analyzed bullet hole locations on bomber aircraft returning from missions over Europe. The data showed <span class="kf">damage concentrated on the wings, fuselage midsection, and tail</span>. The initial recommendation was to add armor plating to these heavily damaged areas, as they sustained the most hits. Statistician Abraham Wald was asked to review this recommendation before implementation.
+      </div>
+      <div class="meta-chips">
+        <span class="chip"><strong>Data:</strong> Bullet hole locations on returning aircraft</span>
+        <span class="chip"><strong>Sample:</strong> All aircraft that returned to base</span>
+      </div>
+    </div>
+    <div class="front-illo">
+      <!-- WWII Bomber top-down view -->
+      <svg viewBox="0 0 200 220" width="85%" style="max-height:195px;">
+        <!-- fuselage -->
+        <ellipse cx="100" cy="108" rx="13" ry="68" fill="#8a8a8a"/>
+        <!-- wings -->
+        <ellipse cx="100" cy="115" rx="86" ry="16" fill="#7a7a7a"/>
+        <!-- nose -->
+        <ellipse cx="100" cy="44" rx="9" ry="13" fill="#999"/>
+        <!-- cockpit -->
+        <ellipse cx="100" cy="65" rx="7" ry="9" fill="#5a9fd4" opacity=".75"/>
+        <!-- engine nacelles -->
+        <ellipse cx="55" cy="115" rx="9" ry="5" fill="#666"/>
+        <ellipse cx="145" cy="115" rx="9" ry="5" fill="#666"/>
+        <!-- tail fins -->
+        <polygon points="80,158 100,148 120,158 115,178 85,178" fill="#8a8a8a"/>
+        <polygon points="80,158 65,172 76,172 85,158" fill="#777"/>
+        <polygon points="120,158 135,172 124,172 115,158" fill="#777"/>
+        <!-- BULLET HOLES on wings (red) -->
+        <circle cx="28" cy="111" r="4" fill="#E74C3C" opacity=".9"/>
+        <circle cx="41" cy="120" r="3" fill="#E74C3C" opacity=".85"/>
+        <circle cx="36" cy="105" r="2.5" fill="#E74C3C" opacity=".8"/>
+        <circle cx="163" cy="109" r="4" fill="#E74C3C" opacity=".9"/>
+        <circle cx="155" cy="122" r="3" fill="#E74C3C" opacity=".85"/>
+        <circle cx="170" cy="118" r="2.5" fill="#E74C3C" opacity=".8"/>
+        <!-- bullet holes on fuselage belly / tail -->
+        <circle cx="96" cy="138" r="3.5" fill="#E74C3C" opacity=".9"/>
+        <circle cx="104" cy="150" r="3" fill="#E74C3C" opacity=".85"/>
+        <circle cx="97" cy="162" r="2.5" fill="#E74C3C" opacity=".8"/>
+        <!-- cockpit/engine area: conspicuously EMPTY — dashed circle -->
+        <circle cx="100" cy="67" r="25" fill="rgba(231,76,60,.07)" stroke="#E74C3C" stroke-width="1.5" stroke-dasharray="4,3"/>
+        <text x="100" y="63" font-size="9" fill="#E74C3C" text-anchor="middle" font-weight="700">no hits?</text>
+        <!-- legend -->
+        <circle cx="18" cy="200" r="5" fill="#E74C3C"/>
+        <text x="27" y="204" font-size="9.5" fill="#555">bullet holes on returning planes</text>
+      </svg>
+    </div>
+  </div>
+  <div class="front-footer">
+    <button class="flip-btn" style="background:#9C640C;" onclick="flip(3)">Reveal Explanation →</button>
+  </div>
+</div>
+<div class="card-face card-back">
+  <div style="background:#9C640C;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="topic-badge" style="background:#9C640C;">Survivorship Bias</span>
+    <span class="station-label">Station 3 — Explanation</span>
+  </div>
+  <div class="back-body">
+    <div class="back-section" style="background:#FEF5E7;">
+      <div class="back-section-label" style="color:#9C640C;">What's Wrong</div>
+      <p>The data only describe aircraft that <em>returned</em>. The damage pattern on surviving planes shows where a plane <em>can be hit and still fly home</em> — not where it's most vulnerable. The planes that never returned were presumably hit somewhere not represented in the data. Armoring the already-damaged areas solves the wrong problem: those planes survived with those hits.</p>
+    </div>
+    <div class="back-section" style="background:#f7f7f7;border-left:3px solid #9C640C;">
+      <div class="back-section-label" style="color:#9C640C;">What to Do Instead</div>
+      <p>Wald's insight: add armor where the returning planes were <em>not</em> hit — the engines and cockpit. That's where the missing planes must have been hit. The correct analysis requires reasoning about the data you <em>cannot observe</em>, not just the data you have. He invented the missing-data reasoning that would later become fundamental to statistics.</p>
+    </div>
+    <div class="ml-impact-box">
+      <div class="ml-impact-label">ML Impact</div>
+      <p>Training sets are often survivorship-biased by construction. Fraud detection models train only on detected fraud; loan default models train only on approved loans. The model learns what correlates with being selected into the training set, not what correlates with the underlying phenomenon you care about.</p>
+    </div>
+    <div class="takeaway-box" style="background:#9C640C;">
+      <div class="takeaway-label">Core Principle</div>
+      Your sample is shaped by a selection process. When that process is correlated with what you're studying, the data you can observe will systematically mislead you about the data you cannot.
+    </div>
+  </div>
+  <div class="back-footer">
+    <button class="flip-btn" style="background:#888;" onclick="flip(3)">← Back to Abstract</button>
+  </div>
+</div>
+</div></div></div>
+
+<!-- ══════════ SLIDE 4: Hedge Fund Performance ══════════ -->
+<div class="slide" id="slide-4">
+<div class="card" id="card-4">
+<div class="card-inner">
+<div class="card-face card-front">
+  <div style="background:#888;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="station-label" style="margin-left:0;">Station 4 of 19</span>
+  </div>
+  <div class="front-body">
+    <div class="front-text">
+      <div>
+        <div class="study-title">Do Active Hedge Funds Outperform Passive Index Strategies? A 15-Year Analysis</div>
+        <div class="study-source">Journal of Finance, 2019 &nbsp;·&nbsp; N = 312 funds in major databases</div>
+      </div>
+      <div class="abstract-box" style="border-color:#9C640C;background:#FEF5E7;">
+        Analyzing 312 hedge funds listed in two major financial databases, we find that the average fund <span class="kf">returned 8.4% annually over the 15-year period</span>, compared to 6.1% for a matched passive index. Funds in the top performance quartile showed persistent outperformance across rolling 3-year windows. We conclude that skilled active management adds measurable alpha net of fees.
+      </div>
+      <div class="meta-chips">
+        <span class="chip"><strong>Sample:</strong> Funds currently in two databases</span>
+        <span class="chip"><strong>Period:</strong> 2004–2019</span>
+        <span class="chip"><strong>Key stat:</strong> 8.4% vs 6.1% annual return</span>
+      </div>
+    </div>
+    <div class="front-illo">
+      <svg viewBox="0 0 220 185" width="95%" style="max-height:185px;">
+        <!-- axes -->
+        <line x1="30" y1="20" x2="30" y2="150" stroke="#ccc" stroke-width="1.5"/>
+        <line x1="30" y1="150" x2="205" y2="150" stroke="#ccc" stroke-width="1.5"/>
+        <text x="118" y="170" font-size="9.5" text-anchor="middle" fill="#888">Time (years)</text>
+        <text x="12" y="85" font-size="9" text-anchor="middle" fill="#888" transform="rotate(-90,12,85)">Return</text>
+        <!-- 8 fund lines — most flatten and stop (fund closes) -->
+        <!-- Fund 1: drops early -->
+        <polyline points="30,90 50,100 65,118 75,130" fill="none" stroke="#E74C3C" stroke-width="1.5" opacity=".7"/>
+        <circle cx="75" cy="130" r="3" fill="#E74C3C" opacity=".7"/>
+        <!-- Fund 2: middling then closes -->
+        <polyline points="30,85 55,88 80,95 100,110 115,125" fill="none" stroke="#E74C3C" stroke-width="1.5" opacity=".7"/>
+        <circle cx="115" cy="125" r="3" fill="#E74C3C" opacity=".7"/>
+        <!-- Fund 3: closes mid-way -->
+        <polyline points="30,88 60,92 90,100 110,115 130,128" fill="none" stroke="#E74C3C" stroke-width="1.5" opacity=".7"/>
+        <circle cx="130" cy="128" r="3" fill="#E74C3C" opacity=".7"/>
+        <!-- Fund 4: closes late -->
+        <polyline points="30,82 70,85 110,90 150,105 170,118" fill="none" stroke="#E74C3C" stroke-width="1.5" opacity=".7"/>
+        <circle cx="170" cy="118" r="3" fill="#E74C3C" opacity=".7"/>
+        <!-- Fund 5: survivor, good performance -->
+        <polyline points="30,88 60,80 90,72 120,65 150,58 180,50 200,44" fill="none" stroke="#27AE60" stroke-width="2.5"/>
+        <!-- Fund 6: survivor, moderate -->
+        <polyline points="30,90 60,85 90,80 120,75 150,70 180,65 200,60" fill="none" stroke="#27AE60" stroke-width="2"/>
+        <!-- labels -->
+        <text x="185" y="40" font-size="9" fill="#27AE60" font-weight="700">In database</text>
+        <text x="185" y="51" font-size="9" fill="#27AE60" font-weight="700">(survivors)</text>
+        <text x="72" y="143" font-size="9" fill="#E74C3C">fund closed</text>
+        <!-- start annotation -->
+        <text x="105" y="180" font-size="10" text-anchor="middle" fill="#9C640C" font-weight="700">Closed funds disappear from databases</text>
+      </svg>
+    </div>
+  </div>
+  <div class="front-footer">
+    <button class="flip-btn" style="background:#9C640C;" onclick="flip(4)">Reveal Explanation →</button>
+  </div>
+</div>
+<div class="card-face card-back">
+  <div style="background:#9C640C;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="topic-badge" style="background:#9C640C;">Survivorship Bias</span>
+    <span class="station-label">Station 4 — Explanation</span>
+  </div>
+  <div class="back-body">
+    <div class="back-section" style="background:#FEF5E7;">
+      <div class="back-section-label" style="color:#9C640C;">What's Wrong</div>
+      <p>Funds that perform poorly close. When they close, they disappear from most financial databases. A study of funds "currently in databases" is therefore averaging only the survivors — the funds that happened to perform well enough to stay open. Researchers estimate this inflates measured average returns by 2–4 percentage points annually, enough to make a mediocre strategy look like it generates genuine alpha.</p>
+    </div>
+    <div class="back-section" style="background:#f7f7f7;border-left:3px solid #9C640C;">
+      <div class="back-section-label" style="color:#9C640C;">What to Do Instead</div>
+      <p>Use survivorship-bias-free databases that track defunct funds alongside active ones (e.g., CRSP Mutual Fund Database, Morningstar with dead-fund coverage). Analyses should reconstruct the fund universe as it existed at the <em>start</em> of the study period and follow all funds — including those that subsequently closed — through the end.</p>
+    </div>
+    <div class="ml-impact-box">
+      <div class="ml-impact-label">ML Impact</div>
+      <p>NLP models trained on published text learn what gets published, not what gets written. Recommendation systems trained on purchased items miss items users saw but rejected. Any ML application where the training label is conditioned on a prior selection process will inherit survivorship bias from that process.</p>
+    </div>
+    <div class="takeaway-box" style="background:#9C640C;">
+      <div class="takeaway-label">Core Principle</div>
+      Any sample of "successful X" is missing the unsuccessful X. Average performance in a survivorship-biased sample will look much better than the average across all attempts.
+    </div>
+  </div>
+  <div class="back-footer">
+    <button class="flip-btn" style="background:#888;" onclick="flip(4)">← Back to Abstract</button>
+  </div>
+</div>
+</div></div></div>
+
+<!-- ══════════ SLIDE 5: Berkeley Admissions ══════════ -->
+<div class="slide" id="slide-5">
+<div class="card" id="card-5">
+<div class="card-inner">
+<div class="card-face card-front">
+  <div style="background:#888;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="station-label" style="margin-left:0;">Station 5 of 19</span>
+  </div>
+  <div class="front-body">
+    <div class="front-text">
+      <div>
+        <div class="study-title">Sex Bias in Graduate Admissions: Data From Berkeley (Bickel et al., 1975)</div>
+        <div class="study-source">Science, 1975 &nbsp;·&nbsp; N = 12,763 applicants &nbsp;·&nbsp; Fall 1973 admissions cycle</div>
+      </div>
+      <div class="abstract-box" style="border-color:#1A5276;background:#EAF2FF;">
+        UC Berkeley's 1973 graduate admissions data appeared to show clear sex bias. <span class="kf">Men were admitted at 44%, women at 35%</span> — a difference large enough to reach statistical significance (χ² p &lt; 0.001). The university faced potential legal challenge. Researchers were asked to investigate whether the discrepancy reflected discriminatory admissions decisions by departments.
+      </div>
+      <div class="meta-chips">
+        <span class="chip"><strong>Men:</strong> 8,442 applied, 3,715 admitted (44%)</span>
+        <span class="chip"><strong>Women:</strong> 4,321 applied, 1,512 admitted (35%)</span>
+      </div>
+    </div>
+    <div class="front-illo">
+      <!-- Two-panel bar chart showing Simpson's paradox -->
+      <svg viewBox="0 0 270 185" width="98%" style="max-height:185px;">
+        <!-- Panel 1: Overall -->
+        <text x="65" y="14" font-size="10.5" text-anchor="middle" fill="#555" font-weight="600">Overall</text>
+        <!-- Men bar: 44% -->
+        <rect x="25" y="26" width="32" height="88" fill="#3498DB"/>
+        <text x="41" y="22" font-size="9" text-anchor="middle" fill="#3498DB" font-weight="700">44%</text>
+        <!-- Women bar: 35% -->
+        <rect x="73" y="44" width="32" height="70" fill="#E91E8C"/>
+        <text x="89" y="40" font-size="9" text-anchor="middle" fill="#E91E8C" font-weight="700">35%</text>
+        <!-- x-axis -->
+        <line x1="15" y1="114" x2="120" y2="114" stroke="#ccc" stroke-width="1"/>
+        <text x="41" y="126" font-size="9" text-anchor="middle" fill="#3498DB">Men</text>
+        <text x="89" y="126" font-size="9" text-anchor="middle" fill="#E91E8C">Women</text>
+
+        <!-- Divider -->
+        <line x1="132" y1="10" x2="132" y2="135" stroke="#ddd" stroke-width="1" stroke-dasharray="3,3"/>
+
+        <!-- Panel 2: By Department -->
+        <text x="200" y="14" font-size="10.5" text-anchor="middle" fill="#555" font-weight="600">By Department</text>
+
+        <!-- Dept A label (hard dept ~25%) -->
+        <text x="165" y="130" font-size="9" text-anchor="middle" fill="#777">Dept A</text>
+        <text x="165" y="141" font-size="8.5" text-anchor="middle" fill="#aaa">(competitive)</text>
+        <!-- men 25% -->
+        <rect x="148" y="64" width="15" height="50" fill="#3498DB"/>
+        <text x="156" y="61" font-size="8.5" text-anchor="middle" fill="#3498DB" font-weight="700">25%</text>
+        <!-- women 26% -->
+        <rect x="167" y="62" width="15" height="52" fill="#E91E8C"/>
+        <text x="175" y="58" font-size="8.5" text-anchor="middle" fill="#E91E8C" font-weight="700">26%</text>
+
+        <!-- Dept B label (easy dept ~70%) -->
+        <text x="232" y="130" font-size="9" text-anchor="middle" fill="#777">Dept B</text>
+        <text x="232" y="141" font-size="8.5" text-anchor="middle" fill="#aaa">(accessible)</text>
+        <!-- men 70% -->
+        <rect x="215" y="16" width="15" height="98" fill="#3498DB"/>
+        <text x="223" y="12" font-size="8.5" text-anchor="middle" fill="#3498DB" font-weight="700">70%</text>
+        <!-- women 72% -->
+        <rect x="234" y="13" width="15" height="101" fill="#E91E8C"/>
+        <text x="242" y="9" font-size="8.5" text-anchor="middle" fill="#E91E8C" font-weight="700">72%</text>
+
+        <!-- axis -->
+        <line x1="140" y1="114" x2="260" y2="114" stroke="#ccc" stroke-width="1"/>
+
+        <!-- bottom note -->
+        <text x="135" y="162" font-size="9.5" fill="#1A5276" font-weight="700">Women apply more to Dept A (harder)</text>
+        <text x="135" y="175" font-size="9" fill="#888">Men apply more to Dept B (easier) — the mix drives the gap</text>
+      </svg>
+    </div>
+  </div>
+  <div class="front-footer">
+    <button class="flip-btn" style="background:#1A5276;" onclick="flip(5)">Reveal Explanation →</button>
+  </div>
+</div>
+<div class="card-face card-back">
+  <div style="background:#1A5276;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="topic-badge" style="background:#1A5276;">Simpson's Paradox</span>
+    <span class="station-label">Station 5 — Explanation</span>
+  </div>
+  <div class="back-body">
+    <div class="back-section" style="background:#EAF2FF;">
+      <div class="back-section-label" style="color:#1A5276;">What's Wrong</div>
+      <p>When Bickel et al. broke the data down by department, the gender gap reversed or disappeared in most departments — women were admitted at equal or higher rates than men in nearly every department individually. The aggregate comparison was confounded by department selectivity. Women disproportionately applied to highly competitive departments (humanities, medicine, law — ~25% admit rates) while men applied more to accessible departments (engineering, chemistry — ~65–80% admit rates). The apparent bias was an artifact of this composition.</p>
+    </div>
+    <div class="back-section" style="background:#f7f7f7;border-left:3px solid #1A5276;">
+      <div class="back-section-label" style="color:#1A5276;">What to Do Instead</div>
+      <p>Always stratify by the relevant confounder before reporting aggregate statistics. A Mantel-Haenszel test or log-linear model accounts for stratification by department. The correct analysis is the department-level analysis, not the university-wide aggregate. The paper became a classic demonstration that aggregate statistics can reverse within every subgroup.</p>
+    </div>
+    <div class="ml-impact-box">
+      <div class="ml-impact-label">ML Impact</div>
+      <p>Fairness audits can show Simpson's paradox: a model may appear to have equal error rates across demographic groups in aggregate while being systematically biased within every subgroup. This is why fairness must be evaluated stratified by relevant confounders — aggregate metrics alone can be actively misleading.</p>
+    </div>
+    <div class="takeaway-box" style="background:#1A5276;">
+      <div class="takeaway-label">Core Principle</div>
+      An aggregate association can reverse in every subgroup when groups are unevenly distributed across strata with different baseline rates. Always ask: what third variable might be driving this?
+    </div>
+  </div>
+  <div class="back-footer">
+    <button class="flip-btn" style="background:#888;" onclick="flip(5)">← Back to Abstract</button>
+  </div>
+</div>
+</div></div></div>
+
+<!-- ══════════ SLIDE 6: P-Hacking / Stopping Rules ══════════ -->
+<div class="slide" id="slide-6">
+<div class="card" id="card-6">
+<div class="card-inner">
+<div class="card-face card-front">
+  <div style="background:#888;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="station-label" style="margin-left:0;">Station 6 of 19</span>
+  </div>
+  <div class="front-body">
+    <div class="front-text">
+      <div>
+        <div class="study-title">Mindfulness Training Reduces Self-Reported Anxiety: A Sequential Trial</div>
+        <div class="study-source">Psychological Science, 2020 &nbsp;·&nbsp; Final N = 64 (32 per group)</div>
+      </div>
+      <div class="abstract-box" style="border-color:#117A65;background:#E8F8F5;">
+        Adults were randomly assigned to 4-week mindfulness training or a wait-list control. Anxiety was measured at baseline and post-intervention. We recruited participants in waves, testing for group differences after each wave of 10 participants per group. We stopped recruitment when <span class="kf">a significant effect emerged (p = 0.041)</span> at n = 64. The mindfulness group showed a 12-point reduction on the GAD-7 versus 5 points in the control group (d = 0.52, 95% CI: 0.01–1.02).
+      </div>
+      <div class="meta-chips">
+        <span class="chip"><strong>Design:</strong> RCT, wave-based recruitment</span>
+        <span class="chip"><strong>Stopping rule:</strong> Stop when p &lt; 0.05</span>
+        <span class="chip"><strong>Final p:</strong> 0.041</span>
+      </div>
+    </div>
+    <div class="front-illo">
+      <!-- p-value over time chart, stops when it crosses 0.05 -->
+      <svg viewBox="0 0 230 185" width="95%" style="max-height:185px;">
+        <text x="115" y="13" font-size="10" text-anchor="middle" fill="#555" font-weight="600">p-value as sample accumulates</text>
+        <!-- axes -->
+        <line x1="30" y1="155" x2="215" y2="155" stroke="#ccc" stroke-width="1.5"/>
+        <line x1="30" y1="20" x2="30" y2="155" stroke="#ccc" stroke-width="1.5"/>
+        <!-- y-axis labels -->
+        <text x="25" y="24" font-size="8.5" text-anchor="end" fill="#888">1.0</text>
+        <text x="25" y="77" font-size="8.5" text-anchor="end" fill="#888">0.5</text>
+        <text x="25" y="130" font-size="8.5" text-anchor="end" fill="#888">0.1</text>
+        <text x="25" y="145" font-size="8.5" text-anchor="end" fill="#117A65" font-weight="600">0.05</text>
+        <text x="25" y="155" font-size="8.5" text-anchor="end" fill="#888">0</text>
+        <!-- x-axis labels -->
+        <text x="50" y="167" font-size="8.5" text-anchor="middle" fill="#888">20</text>
+        <text x="90" y="167" font-size="8.5" text-anchor="middle" fill="#888">40</text>
+        <text x="130" y="167" font-size="8.5" text-anchor="middle" fill="#888">64</text>
+        <text x="122" y="178" font-size="9" text-anchor="middle" fill="#888">n (participants)</text>
+        <!-- threshold line at p=0.05 → y=142 -->
+        <line x1="30" y1="142" x2="215" y2="142" stroke="#117A65" stroke-width="1.5" stroke-dasharray="5,3"/>
+        <text x="218" y="145" font-size="9" fill="#117A65" font-weight="600">p=.05</text>
+        <!-- p-value trajectory (fluctuating, crosses threshold at n=64) -->
+        <!-- maps p values: p=1 at y=24, p=0 at y=155, range 131px -->
+        <!-- p=0.6→y=77, p=0.4→y=103, p=0.2→y=129, p=0.05→y=142, p=0.8→y=51 -->
+        <polyline points="30,90 50,110 60,75 70,120 80,95 90,130 100,108 110,118 120,100 130,139" fill="none" stroke="#E74C3C" stroke-width="2.5"/>
+        <!-- stop marker -->
+        <circle cx="130" cy="139" r="6" fill="#E74C3C"/>
+        <text x="148" y="128" font-size="9.5" fill="#E74C3C" font-weight="700">STOP!</text>
+        <text x="148" y="140" font-size="9" fill="#E74C3C">p = 0.041</text>
+        <!-- dashed continuation to show what might have happened -->
+        <polyline points="130,139 145,125 160,145 175,132 190,148 205,136" fill="none" stroke="#E74C3C" stroke-width="1.5" stroke-dasharray="4,3" opacity=".5"/>
+        <text x="188" y="130" font-size="8.5" fill="#888" font-style="italic">if continued…</text>
+      </svg>
+    </div>
+  </div>
+  <div class="front-footer">
+    <button class="flip-btn" style="background:#117A65;" onclick="flip(6)">Reveal Explanation →</button>
+  </div>
+</div>
+<div class="card-face card-back">
+  <div style="background:#117A65;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="topic-badge" style="background:#117A65;">P-Hacking &amp; Multiple Testing</span>
+    <span class="station-label">Station 6 — Explanation</span>
+  </div>
+  <div class="back-body">
+    <div class="back-section" style="background:#E8F8F5;">
+      <div class="back-section-label" style="color:#117A65;">What's Wrong</div>
+      <p>If you check significance after every batch of new participants and stop when p &lt; 0.05, the actual false positive rate is far higher than 5%. Simulations show that this "optional stopping" approach produces a false positive roughly 22% of the time — even when the null hypothesis is true and procedure looks correct at each individual look. The decision to stop, made on the basis of having achieved significance, is itself a test — and it inflates the error rate.</p>
+    </div>
+    <div class="back-section" style="background:#f7f7f7;border-left:3px solid #117A65;">
+      <div class="back-section-label" style="color:#117A65;">What to Do Instead</div>
+      <p>Pre-register a fixed sample size and stopping rule before any data are collected. If sequential testing is genuinely needed (as in clinical trials where early stopping may be ethical), use alpha-spending functions — O'Brien-Fleming or Pocock bounds — that distribute the Type I error budget across planned interim looks without exceeding the overall α = 0.05.</p>
+    </div>
+    <div class="ml-impact-box">
+      <div class="ml-impact-label">ML Impact</div>
+      <p>Hyperparameter search and neural architecture search are implicit mass hypothesis testing. Running 50 experiments and reporting the best validation score inflates expected performance by the same mechanism as optional stopping. A truly held-out evaluation set — never used for any model selection decision — is the only valid performance estimate.</p>
+    </div>
+    <div class="takeaway-box" style="background:#117A65;">
+      <div class="takeaway-label">Core Principle</div>
+      Significance is only valid if it was genuinely possible not to achieve it. A stopping rule based on having achieved significance guarantees you will eventually achieve it — it's a matter of time, not evidence.
+    </div>
+  </div>
+  <div class="back-footer">
+    <button class="flip-btn" style="background:#888;" onclick="flip(6)">← Back to Abstract</button>
+  </div>
+</div>
+</div></div></div>
+
+<!-- ══════════ SLIDE 7: Multiple Comparisons — Dead Salmon ══════════ -->
+<div class="slide" id="slide-7">
+<div class="card" id="card-7">
+<div class="card-inner">
+<div class="card-face card-front">
+  <div style="background:#888;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="station-label" style="margin-left:0;">Station 7 of 19</span>
+  </div>
+  <div class="front-body">
+    <div class="front-text">
+      <div>
+        <div class="study-title">Neural Correlates of Interspecies Perspective Taking in the Post-Mortem Atlantic Salmon</div>
+        <div class="study-source">Bennett et al., 2009 &nbsp;·&nbsp; Demonstrated at Human Brain Mapping conference</div>
+      </div>
+      <div class="abstract-box" style="border-color:#117A65;background:#E8F8F5;">
+        A dead Atlantic salmon was shown photographs of humans in social situations and asked to determine the emotion being experienced. fMRI scanning was performed during the task. A standard voxel-wise analysis (t-test, p &lt; 0.001, uncorrected) revealed <span class="kf">a cluster of active voxels in the salmon's brain and spinal column</span> showing significant BOLD response to the social photographs. The study was submitted to and accepted at a major neuroimaging conference.
+      </div>
+      <div class="meta-chips">
+        <span class="chip"><strong>Subject:</strong> One (1) dead Atlantic salmon</span>
+        <span class="chip"><strong>Voxels tested:</strong> ~8,064</span>
+        <span class="chip"><strong>Correction:</strong> None applied</span>
+      </div>
+    </div>
+    <div class="front-illo">
+      <!-- 10x10 dot grid showing false positives -->
+      <svg viewBox="0 0 220 185" width="95%" style="max-height:185px;">
+        <text x="110" y="14" font-size="10" text-anchor="middle" fill="#555" font-weight="600">100 independent tests at α = 0.05</text>
+        <!-- 10x10 grid of circles -->
+        <!-- Row 1 -->
+        <circle cx="26" cy="30" r="7" fill="#ddd"/>
+        <circle cx="46" cy="30" r="7" fill="#ddd"/>
+        <circle cx="66" cy="30" r="7" fill="#ddd"/>
+        <circle cx="86" cy="30" r="7" fill="#ddd"/>
+        <circle cx="106" cy="30" r="7" fill="#ddd"/>
+        <circle cx="126" cy="30" r="7" fill="#ddd"/>
+        <circle cx="146" cy="30" r="7" fill="#ddd"/>
+        <circle cx="166" cy="30" r="7" fill="#ddd"/>
+        <circle cx="186" cy="30" r="7" fill="#ddd"/>
+        <circle cx="206" cy="30" r="7" fill="#E74C3C"/>
+        <!-- Row 2 -->
+        <circle cx="26" cy="50" r="7" fill="#ddd"/>
+        <circle cx="46" cy="50" r="7" fill="#ddd"/>
+        <circle cx="66" cy="50" r="7" fill="#ddd"/>
+        <circle cx="86" cy="50" r="7" fill="#ddd"/>
+        <circle cx="106" cy="50" r="7" fill="#ddd"/>
+        <circle cx="126" cy="50" r="7" fill="#ddd"/>
+        <circle cx="146" cy="50" r="7" fill="#ddd"/>
+        <circle cx="166" cy="50" r="7" fill="#E74C3C"/>
+        <circle cx="186" cy="50" r="7" fill="#ddd"/>
+        <circle cx="206" cy="50" r="7" fill="#ddd"/>
+        <!-- Row 3 -->
+        <circle cx="26" cy="70" r="7" fill="#ddd"/>
+        <circle cx="46" cy="70" r="7" fill="#ddd"/>
+        <circle cx="66" cy="70" r="7" fill="#ddd"/>
+        <circle cx="86" cy="70" r="7" fill="#ddd"/>
+        <circle cx="106" cy="70" r="7" fill="#ddd"/>
+        <circle cx="126" cy="70" r="7" fill="#ddd"/>
+        <circle cx="146" cy="70" r="7" fill="#ddd"/>
+        <circle cx="166" cy="70" r="7" fill="#ddd"/>
+        <circle cx="186" cy="70" r="7" fill="#ddd"/>
+        <circle cx="206" cy="70" r="7" fill="#ddd"/>
+        <!-- Row 4 -->
+        <circle cx="26" cy="90" r="7" fill="#E74C3C"/>
+        <circle cx="46" cy="90" r="7" fill="#ddd"/>
+        <circle cx="66" cy="90" r="7" fill="#ddd"/>
+        <circle cx="86" cy="90" r="7" fill="#ddd"/>
+        <circle cx="106" cy="90" r="7" fill="#ddd"/>
+        <circle cx="126" cy="90" r="7" fill="#ddd"/>
+        <circle cx="146" cy="90" r="7" fill="#ddd"/>
+        <circle cx="166" cy="90" r="7" fill="#ddd"/>
+        <circle cx="186" cy="90" r="7" fill="#ddd"/>
+        <circle cx="206" cy="90" r="7" fill="#ddd"/>
+        <!-- Row 5 -->
+        <circle cx="26" cy="110" r="7" fill="#ddd"/>
+        <circle cx="46" cy="110" r="7" fill="#ddd"/>
+        <circle cx="66" cy="110" r="7" fill="#ddd"/>
+        <circle cx="86" cy="110" r="7" fill="#ddd"/>
+        <circle cx="106" cy="110" r="7" fill="#ddd"/>
+        <circle cx="126" cy="110" r="7" fill="#ddd"/>
+        <circle cx="146" cy="110" r="7" fill="#ddd"/>
+        <circle cx="166" cy="110" r="7" fill="#ddd"/>
+        <circle cx="186" cy="110" r="7" fill="#ddd"/>
+        <circle cx="206" cy="110" r="7" fill="#ddd"/>
+        <!-- Rows 6-10 (all gray) -->
+        <circle cx="26" cy="130" r="7" fill="#ddd"/><circle cx="46" cy="130" r="7" fill="#ddd"/><circle cx="66" cy="130" r="7" fill="#ddd"/><circle cx="86" cy="130" r="7" fill="#ddd"/><circle cx="106" cy="130" r="7" fill="#ddd"/><circle cx="126" cy="130" r="7" fill="#ddd"/><circle cx="146" cy="130" r="7" fill="#ddd"/><circle cx="166" cy="130" r="7" fill="#E74C3C"/><circle cx="186" cy="130" r="7" fill="#ddd"/><circle cx="206" cy="130" r="7" fill="#ddd"/>
+        <circle cx="26" cy="150" r="7" fill="#ddd"/><circle cx="46" cy="150" r="7" fill="#ddd"/><circle cx="66" cy="150" r="7" fill="#ddd"/><circle cx="86" cy="150" r="7" fill="#ddd"/><circle cx="106" cy="150" r="7" fill="#ddd"/><circle cx="126" cy="150" r="7" fill="#ddd"/><circle cx="146" cy="150" r="7" fill="#ddd"/><circle cx="166" cy="150" r="7" fill="#ddd"/><circle cx="186" cy="150" r="7" fill="#ddd"/><circle cx="206" cy="150" r="7" fill="#ddd"/>
+        <!-- legend -->
+        <circle cx="26" cy="172" r="6" fill="#E74C3C"/>
+        <text x="38" y="176" font-size="9.5" fill="#E74C3C">= "significant" at p&lt;.05 (by chance alone)</text>
+      </svg>
+    </div>
+  </div>
+  <div class="front-footer">
+    <button class="flip-btn" style="background:#117A65;" onclick="flip(7)">Reveal Explanation →</button>
+  </div>
+</div>
+<div class="card-face card-back">
+  <div style="background:#117A65;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="topic-badge" style="background:#117A65;">P-Hacking &amp; Multiple Testing</span>
+    <span class="station-label">Station 7 — Explanation</span>
+  </div>
+  <div class="back-body">
+    <div class="back-section" style="background:#E8F8F5;">
+      <div class="back-section-label" style="color:#117A65;">What's Wrong</div>
+      <p>Testing ~8,000 voxels at p &lt; 0.001 without correction, you'd expect roughly 8 false positives by chance alone. Bennett et al. did this deliberately to expose the problem: the "significant" voxels in a dead fish are a demonstration of what uncorrected mass univariate testing actually means. The study was accepted because the method was technically standard — the mistake is in the inference, not the computation.</p>
+    </div>
+    <div class="back-section" style="background:#f7f7f7;border-left:3px solid #117A65;">
+      <div class="back-section-label" style="color:#117A65;">What to Do Instead</div>
+      <p>Family-wise error rate (FWER) correction — Bonferroni: divide α by number of tests — controls the probability of <em>any</em> false positive. False discovery rate (FDR) correction (Benjamini-Hochberg) is less conservative: it controls the expected proportion of false positives among declared positives. Modern neuroimaging uses cluster-level inference, permutation testing, or Gaussian random field theory for whole-brain corrections.</p>
+    </div>
+    <div class="ml-impact-box">
+      <div class="ml-impact-label">ML Impact</div>
+      <p>Selecting features from a large set based on validation performance, then reporting accuracy with those features as evidence of their importance, is the ML analog of uncorrected mass testing. The selected features overfit to the evaluation set. Feature importance methods (SHAP, permutation importance) must be interpreted with the same skepticism as any undisclosed multiple comparison.</p>
+    </div>
+    <div class="takeaway-box" style="background:#117A65;">
+      <div class="takeaway-label">Core Principle</div>
+      Statistical significance means nothing if you don't account for how many hypotheses you tested. The more chances you take, the more likely you are to find something significant by chance alone.
+    </div>
+  </div>
+  <div class="back-footer">
+    <button class="flip-btn" style="background:#888;" onclick="flip(7)">← Back to Abstract</button>
+  </div>
+</div>
+</div></div></div>
+
+<!-- ══════════ SLIDE 8: Forking Paths ══════════ -->
+<div class="slide" id="slide-8">
+<div class="card" id="card-8">
+<div class="card-inner">
+<div class="card-face card-front">
+  <div style="background:#888;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="station-label" style="margin-left:0;">Station 8 of 19</span>
+  </div>
+  <div class="front-body">
+    <div class="front-text">
+      <div>
+        <div class="study-title">Economic Threat Predicts Implicit Racial Bias: A Survey Study</div>
+        <div class="study-source">Social Psychological and Personality Science, 2021 &nbsp;·&nbsp; N = 412</div>
+      </div>
+      <div class="abstract-box" style="border-color:#117A65;background:#E8F8F5;">
+        Adults completed an economic anxiety scale, an implicit association test (IAT), and a battery of explicit prejudice measures. We <span class="kf">found that economic threat significantly predicted implicit bias (β = 0.18, p = 0.038)</span>. Outliers (3 SD from mean) were excluded; analyses controlled for age, income, and education. The IAT was selected over the explicit measures because it showed the hypothesized relationship more clearly. A median split on the anxiety scale was used for interpretability.
+      </div>
+      <div class="meta-chips">
+        <span class="chip"><strong>Outcome:</strong> Selected after analysis</span>
+        <span class="chip"><strong>Exclusions:</strong> Post-hoc outlier removal</span>
+        <span class="chip"><strong>Key stat:</strong> β = 0.18, p = 0.038</span>
+      </div>
+    </div>
+    <div class="front-illo">
+      <!-- Forking paths tree -->
+      <svg viewBox="0 0 240 190" width="95%" style="max-height:190px;">
+        <text x="120" y="13" font-size="10" text-anchor="middle" fill="#555" font-weight="600">Each decision point multiplies the tests</text>
+        <!-- Root -->
+        <rect x="90" y="20" width="60" height="22" rx="4" fill="#117A65"/>
+        <text x="120" y="35" font-size="9.5" text-anchor="middle" fill="white" font-weight="600">Study data</text>
+        <!-- Fork 1: Outcome measure -->
+        <line x1="120" y1="42" x2="60" y2="64" stroke="#aaa" stroke-width="1.5"/>
+        <line x1="120" y1="42" x2="120" y2="64" stroke="#aaa" stroke-width="1.5"/>
+        <line x1="120" y1="42" x2="180" y2="64" stroke="#aaa" stroke-width="1.5"/>
+        <rect x="20" y="64" width="78" height="18" rx="3" fill="#f0f0f0" stroke="#ccc" stroke-width="1"/>
+        <text x="59" y="76" font-size="8.5" text-anchor="middle" fill="#555">IAT (implicit)</text>
+        <rect x="81" y="64" width="78" height="18" rx="3" fill="#f0f0f0" stroke="#ccc" stroke-width="1"/>
+        <text x="120" y="76" font-size="8.5" text-anchor="middle" fill="#555">Explicit bias</text>
+        <rect x="142" y="64" width="78" height="18" rx="3" fill="#f0f0f0" stroke="#ccc" stroke-width="1"/>
+        <text x="181" y="76" font-size="8.5" text-anchor="middle" fill="#555">Both combined</text>
+        <!-- Fork 2: Outlier rule -->
+        <line x1="59" y1="82" x2="40" y2="104" stroke="#aaa" stroke-width="1.5"/>
+        <line x1="59" y1="82" x2="78" y2="104" stroke="#aaa" stroke-width="1.5"/>
+        <rect x="15" y="104" width="50" height="18" rx="3" fill="#f0f0f0" stroke="#ccc" stroke-width="1"/>
+        <text x="40" y="116" font-size="8" text-anchor="middle" fill="#555">3SD cutoff</text>
+        <rect x="53" y="104" width="50" height="18" rx="3" fill="#f0f0f0" stroke="#ccc" stroke-width="1"/>
+        <text x="78" y="116" font-size="8" text-anchor="middle" fill="#555">2SD cutoff</text>
+        <!-- Fork 3: Continuous vs. median split -->
+        <line x1="40" y1="122" x2="28" y2="144" stroke="#aaa" stroke-width="1.5"/>
+        <line x1="40" y1="122" x2="52" y2="144" stroke="#aaa" stroke-width="1.5"/>
+        <rect x="4" y="144" width="48" height="18" rx="3" fill="#f0f0f0" stroke="#ccc" stroke-width="1"/>
+        <text x="28" y="156" font-size="7.5" text-anchor="middle" fill="#555">Continuous</text>
+        <!-- HIGHLIGHTED path: leads to p=0.038 -->
+        <rect x="30" y="144" width="48" height="18" rx="3" fill="#E74C3C"/>
+        <text x="54" y="156" font-size="7.5" text-anchor="middle" fill="white" font-weight="700">Median split</text>
+        <!-- p-value shown at end of highlighted path -->
+        <line x1="54" y1="162" x2="54" y2="175" stroke="#E74C3C" stroke-width="1.5"/>
+        <text x="54" y="186" font-size="9" text-anchor="middle" fill="#E74C3C" font-weight="700">p = 0.038 ← published</text>
+        <!-- label at right -->
+        <text x="185" y="145" font-size="9.5" fill="#888" text-anchor="middle">Other paths:</text>
+        <text x="185" y="157" font-size="9.5" fill="#888" text-anchor="middle">p = .12, .31, .27…</text>
+        <text x="185" y="169" font-size="9" fill="#aaa" text-anchor="middle" font-style="italic">not reported</text>
+      </svg>
+    </div>
+  </div>
+  <div class="front-footer">
+    <button class="flip-btn" style="background:#117A65;" onclick="flip(8)">Reveal Explanation →</button>
+  </div>
+</div>
+<div class="card-face card-back">
+  <div style="background:#117A65;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="topic-badge" style="background:#117A65;">P-Hacking &amp; Multiple Testing</span>
+    <span class="station-label">Station 8 — Explanation</span>
+  </div>
+  <div class="back-body">
+    <div class="back-section" style="background:#E8F8F5;">
+      <div class="back-section-label" style="color:#117A65;">What's Wrong</div>
+      <p>A researcher who chooses the outcome measure, exclusion criteria, and analytic approach after seeing the data has effectively run many analyses while reporting only one p-value. Gelman and Loken (2014) called this the "garden of forking paths." Each decision point multiplies the number of implicit tests without the researcher ever consciously trying to cheat — they simply made reasonable-seeming choices at each step in the direction that worked.</p>
+    </div>
+    <div class="back-section" style="background:#f7f7f7;border-left:3px solid #117A65;">
+      <div class="back-section-label" style="color:#117A65;">What to Do Instead</div>
+      <p>Pre-registration locks down the analysis plan — primary outcome, exclusion rules, covariates, transformations — before data collection. Clearly labeling results as <em>confirmatory</em> (valid p-value inference) vs. <em>exploratory</em> (hypothesis-generating, no inference) is the fundamental distinction. Multiverse analysis, which reports results across all defensible analytical choices, is an emerging transparency practice.</p>
+    </div>
+    <div class="ml-impact-box">
+      <div class="ml-impact-label">ML Impact</div>
+      <p>Every ML pipeline decision — architecture, loss function, data augmentation, stopping criterion — is a degree of freedom. Practitioners who tune these choices while watching validation curves are running many implicit experiments while reporting one result. This is a primary reason benchmark performance in ML papers fails to replicate when others run the "same" model.</p>
+    </div>
+    <div class="takeaway-box" style="background:#117A65;">
+      <div class="takeaway-label">Core Principle</div>
+      A researcher who makes analysis decisions based on the data is not running one test — they are running many, while reporting it as if they ran one.
+    </div>
+  </div>
+  <div class="back-footer">
+    <button class="flip-btn" style="background:#888;" onclick="flip(8)">← Back to Abstract</button>
+  </div>
+</div>
+</div></div></div>
+
+<!-- ══════════ SLIDE 9: fMRI Circular Analysis ══════════ -->
+<div class="slide" id="slide-9">
+<div class="card" id="card-9">
+<div class="card-inner">
+<div class="card-face card-front">
+  <div style="background:#888;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="station-label" style="margin-left:0;">Station 9 of 19</span>
+  </div>
+  <div class="front-body">
+    <div class="front-text">
+      <div>
+        <div class="study-title">Neural Correlates of Conscientiousness: A Whole-Brain fMRI Investigation</div>
+        <div class="study-source">NeuroImage, 2020 &nbsp;·&nbsp; N = 52 adults &nbsp;·&nbsp; Domain: Cognitive Neuroscience</div>
+      </div>
+      <div class="abstract-box" style="border-color:#6C3483;background:#F4ECF7;">
+        Resting-state fMRI data were acquired from 52 adults and correlated with conscientiousness scores (NEO-PI-R) across the whole brain. Regions showing significant correlation (p &lt; 0.001, uncorrected) were identified, yielding 7 ROIs. Signal was extracted from these regions and averaged to create a composite neural index of conscientiousness. <span class="kf">The composite showed a mean correlation of r = 0.71 with conscientiousness scores.</span> We propose this composite as a potential neural biomarker for the trait.
+      </div>
+      <div class="meta-chips">
+        <span class="chip"><strong>Step 1:</strong> Find ROIs correlated with score</span>
+        <span class="chip"><strong>Step 2:</strong> Report ROI–score correlation</span>
+        <span class="chip"><strong>Key stat:</strong> r = 0.71</span>
+      </div>
+    </div>
+    <div class="front-illo">
+      <!-- Brain outline with circular arrow -->
+      <svg viewBox="0 0 210 190" width="90%" style="max-height:185px;">
+        <!-- brain silhouette (simplified side view) -->
+        <path d="M60,130 Q30,110 35,80 Q38,55 55,45 Q70,30 95,28 Q125,25 145,40 Q168,55 170,80 Q175,105 155,125 Q145,138 130,142 Q115,148 100,148 Q80,150 60,130 Z" fill="#F3E5F5" stroke="#9C27B0" stroke-width="2"/>
+        <!-- brain folds -->
+        <path d="M65,70 Q80,58 95,72 Q105,80 115,68 Q125,58 135,72" fill="none" stroke="#CE93D8" stroke-width="1.5"/>
+        <path d="M55,100 Q70,90 85,102 Q95,110 110,98 Q120,90 135,100 Q145,108 155,100" fill="none" stroke="#CE93D8" stroke-width="1.5"/>
+        <!-- highlighted ROIs (3 colored regions) -->
+        <ellipse cx="90" cy="65" rx="14" ry="10" fill="#7B1FA2" opacity=".7"/>
+        <ellipse cx="130" cy="75" rx="12" ry="9" fill="#7B1FA2" opacity=".7"/>
+        <ellipse cx="105" cy="105" rx="13" ry="9" fill="#7B1FA2" opacity=".7"/>
+        <!-- circular arrow around brain showing the loop -->
+        <!-- arrows: select → extract → report → select (loop) -->
+        <path d="M175,85 Q195,60 180,35" fill="none" stroke="#E74C3C" stroke-width="2" marker-end="url(#arrowhead)"/>
+        <path d="M165,32 Q135,12 100,18" fill="none" stroke="#E74C3C" stroke-width="2" marker-end="url(#arrowhead)"/>
+        <path d="M45,38 Q22,58 28,88" fill="none" stroke="#E74C3C" stroke-width="2" marker-end="url(#arrowhead)"/>
+        <path d="M28,105 Q18,130 40,148" fill="none" stroke="#E74C3C" stroke-width="2" marker-end="url(#arrowhead)"/>
+        <!-- arrowhead marker -->
+        <defs>
+          <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#E74C3C"/>
+          </marker>
+        </defs>
+        <!-- labels around the loop -->
+        <text x="188" y="62" font-size="8.5" fill="#E74C3C" text-anchor="start">1. select regions</text>
+        <text x="188" y="73" font-size="8.5" fill="#E74C3C" text-anchor="start">that correlate</text>
+        <text x="88" y="11" font-size="8.5" fill="#E74C3C" text-anchor="middle">2. extract signal</text>
+        <text x="10" y="65" font-size="8.5" fill="#E74C3C" text-anchor="middle">3. report</text>
+        <text x="10" y="76" font-size="8.5" fill="#E74C3C" text-anchor="middle">correlation</text>
+        <text x="42" y="168" font-size="9" fill="#E74C3C" text-anchor="start">← with the same score</text>
+        <!-- r value in center -->
+        <text x="104" y="140" font-size="12" fill="#7B1FA2" text-anchor="middle" font-weight="700">r = 0.71</text>
+        <text x="104" y="153" font-size="8.5" fill="#888" text-anchor="middle">guaranteed by selection</text>
+      </svg>
+    </div>
+  </div>
+  <div class="front-footer">
+    <button class="flip-btn" style="background:#6C3483;" onclick="flip(9)">Reveal Explanation →</button>
+  </div>
+</div>
+<div class="card-face card-back">
+  <div style="background:#6C3483;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="topic-badge" style="background:#6C3483;">Circular Analysis</span>
+    <span class="station-label">Station 9 — Explanation</span>
+  </div>
+  <div class="back-body">
+    <div class="back-section" style="background:#F4ECF7;">
+      <div class="back-section-label" style="color:#6C3483;">What's Wrong</div>
+      <p>The ROIs were selected precisely because they correlated with the conscientiousness score. Reporting the correlation between those same ROIs and the same score is mathematically circular — the r = 0.71 is inflated by construction, not by evidence. Vul et al. (2009) called this "voodoo correlations" and demonstrated that it was widespread in social neuroscience, producing implausibly high brain–behavior correlations across dozens of published papers.</p>
+    </div>
+    <div class="back-section" style="background:#f7f7f7;border-left:3px solid #6C3483;">
+      <div class="back-section-label" style="color:#6C3483;">What to Do Instead</div>
+      <p>ROI selection and effect estimation must use independent data. In practice: use a separate "discovery" dataset for ROI selection and a held-out "confirmation" dataset for reporting the correlation; or use leave-one-out cross-validation, which estimates the ROI–score correlation on data not used to select the ROI. The corrected correlation is typically much smaller — 0.3–0.4 rather than 0.7+.</p>
+    </div>
+    <div class="ml-impact-box">
+      <div class="ml-impact-label">ML Impact</div>
+      <p>Selecting top-k features by correlation with the outcome, then reporting cross-validated accuracy, is circular if feature selection used the same samples as cross-validation. Feature selection must happen <em>inside</em> the CV loop — applied only to training folds, never touching the validation fold — or inflated performance estimates are guaranteed.</p>
+    </div>
+    <div class="takeaway-box" style="background:#6C3483;">
+      <div class="takeaway-label">Core Principle</div>
+      When you select on a criterion, the apparent association between your selected variable and that criterion is always an overestimate. Independent data are required for an honest estimate.
+    </div>
+  </div>
+  <div class="back-footer">
+    <button class="flip-btn" style="background:#888;" onclick="flip(9)">← Back to Abstract</button>
+  </div>
+</div>
+</div></div></div>
+
+<!-- ══════════ SLIDE 10: ML Feature Leakage ══════════ -->
+<div class="slide" id="slide-10">
+<div class="card" id="card-10">
+<div class="card-inner">
+<div class="card-face card-front">
+  <div style="background:#888;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="station-label" style="margin-left:0;">Station 10 of 19</span>
+  </div>
+  <div class="front-body">
+    <div class="front-text">
+      <div>
+        <div class="study-title">Predicting 30-Day Hospital Readmission Using Gradient Boosting and EHR Feature Selection</div>
+        <div class="study-source">Journal of the American Medical Informatics Association, 2021 &nbsp;·&nbsp; N = 22,415 admissions</div>
+      </div>
+      <div class="abstract-box" style="border-color:#6C3483;background:#F4ECF7;">
+        From an EHR dataset of 22,415 admissions, 312 candidate features were extracted. Features were ranked by point-biserial correlation with the 30-day readmission outcome <em>across all available cases</em>; the top 50 were retained. We then performed an 80/20 train-test split and trained a gradient boosting classifier on the training set. The model achieved <span class="kf">AUC = 0.87 on the held-out test set</span>, substantially outperforming the LACE+ clinical risk score (AUC = 0.68).
+      </div>
+      <div class="meta-chips">
+        <span class="chip"><strong>Feature selection:</strong> All 22,415 cases (incl. test)</span>
+        <span class="chip"><strong>Split:</strong> 80/20 train-test</span>
+        <span class="chip"><strong>Reported AUC:</strong> 0.87</span>
+      </div>
+    </div>
+    <div class="front-illo">
+      <!-- ML pipeline diagram with leakage arrow -->
+      <svg viewBox="0 0 230 185" width="95%" style="max-height:185px;">
+        <!-- All data box -->
+        <rect x="75" y="15" width="80" height="28" rx="5" fill="#E8EAF6" stroke="#3949AB" stroke-width="1.5"/>
+        <text x="115" y="33" font-size="10" text-anchor="middle" fill="#3949AB" font-weight="600">All data</text>
+        <text x="115" y="44" font-size="8.5" text-anchor="middle" fill="#888">(22,415 admissions)</text>
+        <!-- Feature selection box -->
+        <rect x="60" y="62" width="110" height="28" rx="5" fill="#FCE4EC" stroke="#C62828" stroke-width="2"/>
+        <text x="115" y="78" font-size="10" text-anchor="middle" fill="#C62828" font-weight="700">Feature Selection</text>
+        <text x="115" y="89" font-size="8" text-anchor="middle" fill="#888">top-50 by correlation</text>
+        <!-- Arrow: all data → feature selection -->
+        <line x1="115" y1="43" x2="115" y2="62" stroke="#555" stroke-width="1.5" marker-end="url(#arr2)"/>
+        <defs>
+          <marker id="arr2" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
+            <polygon points="0 0, 7 2.5, 0 5" fill="#555"/>
+          </marker>
+          <marker id="arr3" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto">
+            <polygon points="0 0, 7 2.5, 0 5" fill="#C62828"/>
+          </marker>
+        </defs>
+        <!-- Train / Test split -->
+        <rect x="20" y="112" width="80" height="28" rx="5" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.5"/>
+        <text x="60" y="130" font-size="10" text-anchor="middle" fill="#2E7D32" font-weight="600">Train (80%)</text>
+        <rect x="130" y="112" width="80" height="28" rx="5" fill="#E3F2FD" stroke="#1565C0" stroke-width="1.5"/>
+        <text x="170" y="130" font-size="10" text-anchor="middle" fill="#1565C0" font-weight="600">Test (20%)</text>
+        <!-- Arrows: feature sel → train, → test -->
+        <line x1="95" y1="90" x2="65" y2="112" stroke="#555" stroke-width="1.5" marker-end="url(#arr2)"/>
+        <line x1="135" y1="90" x2="165" y2="112" stroke="#555" stroke-width="1.5" marker-end="url(#arr2)"/>
+        <!-- LEAKAGE ARROW: test labels → feature selection (red, curved) -->
+        <path d="M210,126 Q230,80 175,70" fill="none" stroke="#C62828" stroke-width="2.5" stroke-dasharray="5,3" marker-end="url(#arr3)"/>
+        <text x="220" y="103" font-size="9" fill="#C62828" text-anchor="middle" font-weight="700">LEAK!</text>
+        <text x="215" y="114" font-size="8.5" fill="#C62828" text-anchor="middle">test labels used</text>
+        <text x="215" y="124" font-size="8.5" fill="#C62828" text-anchor="middle">in step 1</text>
+        <!-- AUC result -->
+        <text x="170" y="158" font-size="10.5" text-anchor="middle" fill="#1565C0" font-weight="700">AUC = 0.87</text>
+        <text x="170" y="170" font-size="9" text-anchor="middle" fill="#C62828">↑ inflated</text>
+      </svg>
+    </div>
+  </div>
+  <div class="front-footer">
+    <button class="flip-btn" style="background:#6C3483;" onclick="flip(10)">Reveal Explanation →</button>
+  </div>
+</div>
+<div class="card-face card-back">
+  <div style="background:#6C3483;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="topic-badge" style="background:#6C3483;">Circular Analysis</span>
+    <span class="station-label">Station 10 — Explanation</span>
+  </div>
+  <div class="back-body">
+    <div class="back-section" style="background:#F4ECF7;">
+      <div class="back-section-label" style="color:#6C3483;">What's Wrong</div>
+      <p>Feature selection used correlation with readmission across all 22,415 cases — including the test cases. The model has effectively "seen" the test labels during feature selection, before training. This means the test set is no longer independent of the model development process. AUC = 0.87 is an optimistic estimate of generalization, not a valid one. This is the most common reason clinical ML models fail when deployed on new patients.</p>
+    </div>
+    <div class="back-section" style="background:#f7f7f7;border-left:3px solid #6C3483;">
+      <div class="back-section-label" style="color:#6C3483;">What to Do Instead</div>
+      <p>All preprocessing — feature selection, imputation, scaling, encoding — must happen <em>inside</em> the cross-validation loop, using only training data. The correct procedure: split data first (or define cross-validation folds), then perform feature selection and model training entirely within the training fold, then evaluate on the untouched held-out fold. Only touch the test set once, at the very end.</p>
+    </div>
+    <div class="ml-impact-box">
+      <div class="ml-impact-label">ML Impact</div>
+      <p>This station describes an ML error directly. Data leakage also enters through: preprocessing (scalers, imputers) fit on the full dataset; time-series splits that allow future data to predict the past; and target encoding that leaks label information into features. It's the most cited reason clinical ML models achieve high published AUC but fail when deployed on real patients.</p>
+    </div>
+    <div class="takeaway-box" style="background:#6C3483;">
+      <div class="takeaway-label">Core Principle</div>
+      The test set is only a valid estimate of generalization if it was never touched during model development — not even for preprocessing or feature selection.
+    </div>
+  </div>
+  <div class="back-footer">
+    <button class="flip-btn" style="background:#888;" onclick="flip(10)">← Back to Abstract</button>
+  </div>
+</div>
+</div></div></div>
+
+<!-- ══════════ SLIDE 11: Blood Pressure ══════════ -->
+<div class="slide" id="slide-11">
+<div class="card" id="card-11">
+<div class="card-inner">
+<div class="card-face card-front">
+  <div style="background:#888;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="station-label" style="margin-left:0;">Station 11 of 19</span>
+  </div>
+  <div class="front-body">
+    <div class="front-text">
+      <div>
+        <div class="study-title">Systolic Blood Pressure — Same Data, Two Guidelines</div>
+        <div class="study-source">N = 1,000 adults &nbsp;·&nbsp; Ages 40–75 &nbsp;·&nbsp; Primary care cohort</div>
+      </div>
+      <div class="abstract-box" style="border-color:#1E8449;background:#EAFAF1;">
+        The same blood pressure readings yield very different prevalence estimates depending on which clinical guideline is applied. <strong>JNC 7 (2003)</strong> defines hypertension as systolic BP ≥ 140 mmHg. <strong>ACC/AHA (2017)</strong> lowered the threshold to ≥ 130 mmHg. In this cohort, <span class="kf">32% are "hypertensive" under JNC 7, but 53% under ACC/AHA 2017</span> — 210 additional patients receiving the same diagnosis, label, and treatment recommendation from the same readings.
+      </div>
+    </div>
+    <div class="front-illo">
+      <svg viewBox="0 0 540 195" width="100%" style="max-height:185px;">
+        <!-- Bars: bottom at y=155, max height 120px -->
+        <rect x="50"  y="148" width="46" height="7"   fill="#AED6F1"/>
+        <rect x="98"  y="133" width="46" height="22"  fill="#AED6F1"/>
+        <rect x="146" y="74"  width="46" height="81"  fill="#AED6F1"/>
+        <rect x="194" y="35"  width="46" height="120" fill="#AED6F1"/>
+        <rect x="242" y="50"  width="46" height="105" fill="#F5CBA7"/>
+        <rect x="290" y="86"  width="46" height="69"  fill="#F1948A"/>
+        <rect x="338" y="113" width="46" height="42"  fill="#F1948A"/>
+        <rect x="386" y="130" width="46" height="25"  fill="#F1948A"/>
+        <rect x="434" y="143" width="46" height="12"  fill="#F1948A"/>
+        <rect x="482" y="148" width="46" height="7"   fill="#F1948A"/>
+        <!-- Axis -->
+        <line x1="40" y1="155" x2="540" y2="155" stroke="#ccc" stroke-width="1"/>
+        <!-- 130 threshold -->
+        <line x1="242" y1="16" x2="242" y2="155" stroke="#E67E22" stroke-width="2" stroke-dasharray="5,3"/>
+        <text x="238" y="13" font-size="9" fill="#E67E22" text-anchor="end" font-weight="700">130 mmHg</text>
+        <text x="238" y="24" font-size="8.5" fill="#E67E22" text-anchor="end">ACC/AHA 2017</text>
+        <text x="238" y="35" font-size="9" fill="#E67E22" text-anchor="end" font-weight="700">→ 53% hypertensive</text>
+        <!-- 140 threshold -->
+        <line x1="290" y1="16" x2="290" y2="155" stroke="#C0392B" stroke-width="2"/>
+        <text x="294" y="13" font-size="9" fill="#C0392B" text-anchor="start" font-weight="700">140 mmHg</text>
+        <text x="294" y="24" font-size="8.5" fill="#C0392B" text-anchor="start">JNC 7 (2003)</text>
+        <text x="294" y="35" font-size="9" fill="#C0392B" text-anchor="start" font-weight="700">→ 32% hypertensive</text>
+        <!-- x labels -->
+        <text x="73"  y="170" font-size="9" fill="#aaa" text-anchor="middle">90</text>
+        <text x="169" y="170" font-size="9" fill="#aaa" text-anchor="middle">110</text>
+        <text x="242" y="170" font-size="9" fill="#E67E22" text-anchor="middle" font-weight="600">130</text>
+        <text x="290" y="170" font-size="9" fill="#C0392B" text-anchor="middle" font-weight="600">140</text>
+        <text x="361" y="170" font-size="9" fill="#aaa" text-anchor="middle">150</text>
+        <text x="457" y="170" font-size="9" fill="#aaa" text-anchor="middle">170</text>
+        <text x="295" y="185" font-size="9" fill="#aaa" text-anchor="middle">Systolic Blood Pressure (mmHg)</text>
+      </svg>
+    </div>
+  </div>
+  <div class="front-footer">
+    <button class="flip-btn" style="background:#1E8449;" onclick="flip(11)">Reveal Explanation →</button>
+  </div>
+</div>
+<div class="card-face card-back">
+  <div style="background:#1E8449;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="topic-badge" style="background:#1E8449;">Dichotomization</span>
+    <span class="station-label">Station 11 — Explanation</span>
+  </div>
+  <div class="back-body">
+    <div class="back-section" style="background:#EAFAF1;">
+      <div class="back-section-label" style="color:#1E8449;">What's Wrong</div>
+      <p>Dichotomizing erases the information that 138 mmHg and 108 mmHg are treated identically, as are 142 mmHg and 185 mmHg. Cardiovascular risk is actually continuous and approximately linear across this range — a 10-point increase in systolic BP is roughly the same increase in risk whether you start at 120 or 150. The threshold is partly a clinical and political decision: the ACC/AHA change was driven partly by medication guidelines and partly by pharmaceutical industry dynamics, not a sharp discontinuity in risk at 130.</p>
+    </div>
+    <div class="back-section" style="background:#f7f7f7;border-left:3px solid #1E8449;">
+      <div class="back-section-label" style="color:#1E8449;">What to Do Instead</div>
+      <p>Use the continuous BP value directly in regression models predicting outcomes. Report results across multiple clinically-relevant thresholds, or better, report the full dose-response curve. If a clinical decision rule requires a binary threshold, make the threshold choice explicit and its effect on prevalence transparent — as this chart does.</p>
+    </div>
+    <div class="ml-impact-box">
+      <div class="ml-impact-label">ML Impact</div>
+      <p>ML practitioners routinely dichotomize continuous outcomes to frame problems as classification. A 30-day readmission classifier treats day-29 identically to day-1, and day-31 identically to day-365. The model optimizes the arbitrary threshold, not the underlying clinical reality — and threshold choice at deployment time can silently reverse which patients get flagged.</p>
+    </div>
+    <div class="takeaway-box" style="background:#1E8449;">
+      <div class="takeaway-label">Core Principle</div>
+      When the underlying relationship is continuous, a binary variable throws away information. Threshold choice can be manipulated to make the same data tell very different stories.
+    </div>
+  </div>
+  <div class="back-footer">
+    <button class="flip-btn" style="background:#888;" onclick="flip(11)">← Back to Abstract</button>
+  </div>
+</div>
+</div></div></div>
+
+<!-- ══════════ SLIDE 12: Pseudoreplication ══════════ -->
+<div class="slide" id="slide-12">
+<div class="card" id="card-12">
+<div class="card-inner">
+<div class="card-face card-front">
+  <div style="background:#888;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="station-label" style="margin-left:0;">Station 12 of 19</span>
+  </div>
+  <div class="front-body">
+    <div class="front-text">
+      <div>
+        <div class="study-title">Atrazine Exposure Elevates Cortisol in Larval Zebrafish: A Controlled Tank Study</div>
+        <div class="study-source">Aquatic Toxicology, 2020 &nbsp;·&nbsp; N = 10 fish &nbsp;·&nbsp; 2 tanks</div>
+      </div>
+      <div class="abstract-box" style="border-color:#7E5109;background:#FEF9E7;">
+        Larval zebrafish were divided between two 10-liter tanks: Tank A received clean water (control); Tank B received water treated with 100 ppb atrazine (herbicide). After 72 hours, cortisol was measured in five fish from each tank. <span class="kf">Fish in Tank B showed significantly elevated cortisol compared to controls (t(8) = 3.47, p = 0.008)</span>, using a two-sample t-test with df = 8 (five fish per group). Authors conclude that atrazine causes acute cortisol stress responses in larval fish.
+      </div>
+      <div class="meta-chips">
+        <span class="chip"><strong>Treatment assignment:</strong> Tank-level (1 tank per condition)</span>
+        <span class="chip"><strong>Measurements:</strong> 5 fish per tank</span>
+        <span class="chip"><strong>df used:</strong> 8</span>
+      </div>
+    </div>
+    <div class="front-illo">
+      <!-- Two fish tanks -->
+      <svg viewBox="0 0 230 190" width="95%" style="max-height:185px;">
+        <!-- Tank A (control) -->
+        <rect x="12" y="30" width="90" height="100" rx="5" fill="#E3F2FD" stroke="#1565C0" stroke-width="2"/>
+        <text x="57" y="22" font-size="11" text-anchor="middle" fill="#1565C0" font-weight="700">Tank A</text>
+        <text x="57" y="143" font-size="9.5" text-anchor="middle" fill="#1565C0">Control (0 ppb)</text>
+        <!-- fish in tank A (simple fish shapes) -->
+        <ellipse cx="35" cy="60" rx="12" ry="6" fill="#42A5F5"/><polygon points="47,60 55,54 55,66" fill="#42A5F5"/>
+        <ellipse cx="75" cy="75" rx="12" ry="6" fill="#42A5F5"/><polygon points="87,75 95,69 95,81" fill="#42A5F5"/>
+        <ellipse cx="40" cy="92" rx="12" ry="6" fill="#42A5F5"/><polygon points="52,92 60,86 60,98" fill="#42A5F5"/>
+        <ellipse cx="70" cy="108" rx="12" ry="6" fill="#42A5F5"/><polygon points="82,108 90,102 90,114" fill="#42A5F5"/>
+        <ellipse cx="45" cy="122" rx="12" ry="6" fill="#42A5F5"/><polygon points="57,122 65,116 65,128" fill="#42A5F5"/>
+        <!-- Tank B (atrazine) -->
+        <rect x="128" y="30" width="90" height="100" rx="5" fill="#FFF8E1" stroke="#E65100" stroke-width="2"/>
+        <text x="173" y="22" font-size="11" text-anchor="middle" fill="#E65100" font-weight="700">Tank B</text>
+        <text x="173" y="143" font-size="9.5" text-anchor="middle" fill="#E65100">100 ppb atrazine</text>
+        <!-- fish in tank B (with stress marks) -->
+        <ellipse cx="148" cy="60" rx="12" ry="6" fill="#FF7043"/><polygon points="160,60 168,54 168,66" fill="#FF7043"/>
+        <text x="165" y="55" font-size="9" fill="#E65100">!</text>
+        <ellipse cx="190" cy="75" rx="12" ry="6" fill="#FF7043"/><polygon points="202,75 210,69 210,81" fill="#FF7043"/>
+        <ellipse cx="152" cy="92" rx="12" ry="6" fill="#FF7043"/><polygon points="164,92 172,86 172,98" fill="#FF7043"/>
+        <ellipse cx="185" cy="108" rx="12" ry="6" fill="#FF7043"/><polygon points="197,108 205,102 205,114" fill="#FF7043"/>
+        <ellipse cx="158" cy="122" rx="12" ry="6" fill="#FF7043"/><polygon points="170,122 178,116 178,128" fill="#FF7043"/>
+        <!-- annotations below -->
+        <text x="115" y="165" font-size="10.5" text-anchor="middle" fill="#7E5109" font-weight="700">True n = 2 tanks, not 10 fish</text>
+        <text x="115" y="180" font-size="9.5" text-anchor="middle" fill="#888">The fish in a tank are not independent of each other</text>
+      </svg>
+    </div>
+  </div>
+  <div class="front-footer">
+    <button class="flip-btn" style="background:#7E5109;" onclick="flip(12)">Reveal Explanation →</button>
+  </div>
+</div>
+<div class="card-face card-back">
+  <div style="background:#7E5109;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="topic-badge" style="background:#7E5109;">Pseudoreplication</span>
+    <span class="station-label">Station 12 — Explanation</span>
+  </div>
+  <div class="back-body">
+    <div class="back-section" style="background:#FEF9E7;">
+      <div class="back-section-label" style="color:#7E5109;">What's Wrong</div>
+      <p>The experiment has one tank per treatment. The five fish within each tank share water chemistry, temperature, microbiome, feeding schedule, dissolved oxygen, and any tank-specific random effects. They are not independent observations — they are five measurements from the same experimental unit. Using df = 8 inflates the degrees of freedom by a factor of 5. The true degrees of freedom is 0 (one tank per condition; you cannot estimate variance with a single observation per group). The p = 0.008 is meaningless.</p>
+    </div>
+    <div class="back-section" style="background:#f7f7f7;border-left:3px solid #7E5109;">
+      <div class="back-section-label" style="color:#7E5109;">What to Do Instead</div>
+      <p>The unit of replication must match the unit of treatment assignment. With tank as the unit, you need multiple tanks per treatment (minimum 3, ideally 5+). Analyze at the tank level (compute tank means, compare those) for a simple approach. Mixed-effects models with tank as a random effect are more powerful and correctly partition within-tank and between-tank variance. More fish per tank does not help — you need more tanks.</p>
+    </div>
+    <div class="ml-impact-box">
+      <div class="ml-impact-label">ML Impact</div>
+      <p>Batch effects are pseudoreplication in ML: images from the same scanner, lab, or hospital share technical variance that naive random splits treat as independent signal. A dataset of 50,000 scans where one hospital contributed 40,000 has far less effective diversity than it appears. Evaluation must be stratified by source — or models will appear to generalize when they're actually memorizing batch identity.</p>
+    </div>
+    <div class="takeaway-box" style="background:#7E5109;">
+      <div class="takeaway-label">Core Principle</div>
+      The unit of replication is the unit that was independently assigned to a treatment — not the unit that was measured. Subsampling within an experimental unit does not give you more independent replicates.
+    </div>
+  </div>
+  <div class="back-footer">
+    <button class="flip-btn" style="background:#888;" onclick="flip(12)">← Back to Abstract</button>
+  </div>
+</div>
+</div></div></div>
+
+<!-- ══════════ SLIDE 13: Kidney Stone Treatment ══════════ -->
+<div class="slide" id="slide-13">
+<div class="card" id="card-13">
+<div class="card-inner">
+<div class="card-face card-front">
+  <div style="background:#888;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="station-label" style="margin-left:0;">Station 13 of 19</span>
+  </div>
+  <div class="front-body">
+    <div class="front-text">
+      <div>
+        <div class="study-title">Comparison of Treatments for Kidney Stones: Open Surgery vs. Minimally Invasive Procedure</div>
+        <div class="study-source">Charig et al., BMJ, 1986 &nbsp;·&nbsp; N = 700 patients</div>
+      </div>
+      <div class="abstract-box" style="border-color:#1A5276;background:#EAF2FF;">
+        Researchers compared two treatments for kidney stones: Treatment A (open surgery) and Treatment B (percutaneous nephrolithotomy, a less invasive procedure). Treatment B showed <span class="kf">83% overall success vs. 78% for Treatment A</span> (χ² p &lt; 0.001). The authors recommended Treatment B as the preferred first-line approach based on its superior overall success rate.
+      </div>
+      <div class="meta-chips">
+        <span class="chip"><strong>Treatment A:</strong> 273/350 success (78%)</span>
+        <span class="chip"><strong>Treatment B:</strong> 289/350 success (83%)</span>
+      </div>
+    </div>
+    <div class="front-illo">
+      <svg viewBox="0 0 290 185" width="98%">
+        <!-- Panel 1: Overall -->
+        <text x="65" y="14" font-size="10.5" text-anchor="middle" fill="#555" font-weight="600">Overall</text>
+        <rect x="22" y="36" width="32" height="78" fill="#3498DB"/>
+        <text x="38" y="32" font-size="9" text-anchor="middle" fill="#3498DB" font-weight="700">78%</text>
+        <rect x="72" y="31" width="32" height="83" fill="#E67E22"/>
+        <text x="88" y="27" font-size="9" text-anchor="middle" fill="#E67E22" font-weight="700">83%</text>
+        <line x1="12" y1="114" x2="118" y2="114" stroke="#ccc" stroke-width="1"/>
+        <text x="38" y="126" font-size="9" text-anchor="middle" fill="#3498DB">Treatment A</text>
+        <text x="88" y="126" font-size="9" text-anchor="middle" fill="#E67E22">Treatment B</text>
+        <text x="65" y="145" font-size="9.5" text-anchor="middle" fill="#E67E22" font-weight="700">B looks better overall</text>
+        <!-- divider -->
+        <line x1="132" y1="10" x2="132" y2="148" stroke="#ddd" stroke-width="1" stroke-dasharray="3,3"/>
+        <!-- Panel 2: By stone size -->
+        <text x="210" y="14" font-size="10.5" text-anchor="middle" fill="#555" font-weight="600">By Stone Size</text>
+        <!-- Small stones: A=93%, B=87% -->
+        <text x="170" y="130" font-size="9" text-anchor="middle" fill="#777">Small</text>
+        <text x="170" y="141" font-size="8.5" text-anchor="middle" fill="#aaa">stones</text>
+        <rect x="150" y="58" width="15" height="56" fill="#3498DB"/>
+        <text x="158" y="54" font-size="8.5" text-anchor="middle" fill="#3498DB" font-weight="700">93%</text>
+        <rect x="169" y="62" width="15" height="52" fill="#E67E22"/>
+        <text x="177" y="58" font-size="8.5" text-anchor="middle" fill="#E67E22" font-weight="700">87%</text>
+        <!-- Large stones: A=73%, B=69% -->
+        <text x="243" y="130" font-size="9" text-anchor="middle" fill="#777">Large</text>
+        <text x="243" y="141" font-size="8.5" text-anchor="middle" fill="#aaa">stones</text>
+        <rect x="222" y="70" width="15" height="44" fill="#3498DB"/>
+        <text x="230" y="66" font-size="8.5" text-anchor="middle" fill="#3498DB" font-weight="700">73%</text>
+        <rect x="241" y="73" width="15" height="41" fill="#E67E22"/>
+        <text x="249" y="69" font-size="8.5" text-anchor="middle" fill="#E67E22" font-weight="700">69%</text>
+        <line x1="140" y1="114" x2="270" y2="114" stroke="#ccc" stroke-width="1"/>
+        <text x="205" y="145" font-size="9.5" text-anchor="middle" fill="#3498DB" font-weight="700">A is better in both subgroups</text>
+        <text x="205" y="158" font-size="9" text-anchor="middle" fill="#888">A was assigned 75% of the large (harder) stones</text>
+      </svg>
+    </div>
+  </div>
+  <div class="front-footer">
+    <button class="flip-btn" style="background:#1A5276;" onclick="flip(13)">Reveal Explanation →</button>
+  </div>
+</div>
+<div class="card-face card-back">
+  <div style="background:#1A5276;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="topic-badge" style="background:#1A5276;">Simpson's Paradox</span>
+    <span class="station-label">Station 13 — Explanation</span>
+  </div>
+  <div class="back-body">
+    <div class="back-section" style="background:#EAF2FF;">
+      <div class="back-section-label" style="color:#1A5276;">What's Wrong</div>
+      <p>Surgeons preferentially assigned Treatment A (open surgery) to the harder cases — large, complex kidney stones. Treatment B was reserved mostly for small, easier-to-treat stones. Even though A outperformed B within every stone-size category, its overall rate was dragged down by its harder caseload. Reporting the aggregate comparison produces the opposite conclusion from the correct stratified analysis — and recommending B would steer every patient toward the worse treatment.</p>
+    </div>
+    <div class="back-section" style="background:#f7f7f7;border-left:3px solid #1A5276;">
+      <div class="back-section-label" style="color:#1A5276;">What to Do Instead</div>
+      <p>Stratify by stone size before comparing treatments. A Mantel-Haenszel test or logistic regression with stone size as a covariate gives the correct within-stratum estimate. When treatment assignment is not random — and difficult cases are selectively routed to one treatment — the aggregate comparison conflates treatment effect with case difficulty. Randomized assignment eliminates this problem by construction.</p>
+    </div>
+    <div class="ml-impact-box">
+      <div class="ml-impact-label">ML Impact</div>
+      <p>Treatment assignment bias in observational healthcare data maps directly onto training set composition bias in ML. A model trained on outcomes without accounting for case difficulty will learn that the treatment assigned to easy cases "works better" — not because of the treatment, but because of who received it. This is a central challenge in causal ML and uplift modeling.</p>
+    </div>
+    <div class="takeaway-box" style="background:#1A5276;">
+      <div class="takeaway-label">Core Principle</div>
+      An aggregate comparison that ignores case difficulty — or department selectivity, or stone size — can reverse in every subgroup. The aggregate isn't just imprecise; it can point in the entirely wrong direction.
+    </div>
+  </div>
+  <div class="back-footer">
+    <button class="flip-btn" style="background:#888;" onclick="flip(13)">← Back to Abstract</button>
+  </div>
+</div>
+</div></div></div>
+
+<!-- ══════════ SLIDE 14: ISIS-2 Astrological Subgroups ══════════ -->
+<div class="slide" id="slide-14">
+<div class="card" id="card-14">
+<div class="card-inner">
+<div class="card-face card-front">
+  <div style="background:#888;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="station-label" style="margin-left:0;">Station 14 of 19</span>
+  </div>
+  <div class="front-body">
+    <div class="front-text">
+      <div>
+        <div class="study-title">Aspirin After Heart Attack — and the Astrological Subgroup Analysis</div>
+        <div class="study-source">ISIS-2 Collaborative Group, Lancet, 1988 &nbsp;·&nbsp; N = 17,187</div>
+      </div>
+      <div class="abstract-box" style="border-color:#117A65;background:#E8F8F5;">
+        ISIS-2 randomized 17,187 patients with suspected acute MI to aspirin, streptokinase, both, or neither. Aspirin reduced 5-week vascular mortality by 23% overall (OR = 0.77, p &lt; 0.00001). The authors then ran a subgroup analysis by patients' astrological birth sign. <span class="kf">Patients born under Gemini or Libra showed no apparent benefit from aspirin</span> (OR ≈ 1.01), while all other signs showed clear benefit. The authors published this analysis themselves — deliberately — in the paper.
+      </div>
+      <div class="meta-chips">
+        <span class="chip"><strong>Overall aspirin effect:</strong> OR = 0.77 (p &lt; 0.00001)</span>
+        <span class="chip"><strong>Gemini &amp; Libra:</strong> OR ≈ 1.01 (p = 0.94)</span>
+        <span class="chip"><strong>Subgroups tested:</strong> 12</span>
+      </div>
+    </div>
+    <div class="front-illo">
+      <svg viewBox="0 0 255 185" width="98%">
+        <text x="145" y="11" font-size="9.5" text-anchor="middle" fill="#555" font-weight="600">Aspirin effect by birth sign (OR, 95% CI)</text>
+        <!-- OR=1.0 vertical line at x=148 -->
+        <line x1="148" y1="14" x2="148" y2="163" stroke="#999" stroke-width="1" stroke-dasharray="3,2"/>
+        <!-- Overall OR=0.77 line at x=98 -->
+        <line x1="98" y1="14" x2="98" y2="163" stroke="#27AE60" stroke-width="1.2" stroke-dasharray="4,2" opacity=".65"/>
+        <text x="98" y="12" font-size="7.5" text-anchor="middle" fill="#27AE60">overall</text>
+        <!-- x-axis -->
+        <line x1="45" y1="163" x2="230" y2="163" stroke="#ccc" stroke-width="1"/>
+        <text x="45"  y="175" font-size="8" text-anchor="middle" fill="#aaa">0.5</text>
+        <text x="98"  y="175" font-size="8" text-anchor="middle" fill="#27AE60">0.77</text>
+        <text x="148" y="175" font-size="8" text-anchor="middle" fill="#888">1.0</text>
+        <text x="195" y="175" font-size="8" text-anchor="middle" fill="#aaa">1.35</text>
+        <!-- benefit zone label -->
+        <text x="70" y="185" font-size="8" text-anchor="middle" fill="#27AE60">← benefit</text>
+        <text x="185" y="185" font-size="8" text-anchor="middle" fill="#E74C3C">no benefit →</text>
+
+        <!-- Row data: each sign has CI line + point circle -->
+        <!-- x mapping: range 0.5–1.4 → x 45–230, scale = 185/0.9 = 205.6 per OR unit -->
+        <!-- x = 45 + (OR - 0.5) * 205.6 -->
+        <!-- OR=0.77 → 45+(0.27*205.6)=45+55.5=100≈98 (using 98) -->
+        <!-- CI_low ~0.64 → 45+(0.14*205.6)=45+28.8=74, CI_high ~0.91 → 45+(0.41*205.6)=45+84.3=129 -->
+
+        <!-- Aries ♈ OR=0.78 → x=100, CI[0.65,0.93] → [78,131] -->
+        <text x="39" y="23" font-size="8.5" text-anchor="end" fill="#555">♈ Aries</text>
+        <line x1="78" y1="19" x2="131" y2="19" stroke="#27AE60" stroke-width="1.5"/>
+        <circle cx="100" cy="19" r="3" fill="#27AE60"/>
+
+        <!-- Taurus ♉ OR=0.75 → x=92, CI[0.62,0.90] → [72,123] -->
+        <text x="39" y="34" font-size="8.5" text-anchor="end" fill="#555">♉ Taurus</text>
+        <line x1="72" y1="30" x2="123" y2="30" stroke="#27AE60" stroke-width="1.5"/>
+        <circle cx="92" cy="30" r="3" fill="#27AE60"/>
+
+        <!-- GEMINI ♊ OR=1.01 → x=149, CI[0.83,1.23] → [108,170] — RED -->
+        <text x="39" y="45" font-size="8.5" text-anchor="end" fill="#C0392B" font-weight="700">♊ Gemini</text>
+        <line x1="108" y1="41" x2="170" y2="41" stroke="#E74C3C" stroke-width="1.8"/>
+        <circle cx="149" cy="41" r="3.5" fill="#E74C3C"/>
+        <text x="174" y="45" font-size="8" fill="#E74C3C" font-weight="600">p=.97</text>
+
+        <!-- Cancer ♋ OR=0.79 → x=100 -->
+        <text x="39" y="56" font-size="8.5" text-anchor="end" fill="#555">♋ Cancer</text>
+        <line x1="79" y1="52" x2="130" y2="52" stroke="#27AE60" stroke-width="1.5"/>
+        <circle cx="100" cy="52" r="3" fill="#27AE60"/>
+
+        <!-- Leo ♌ OR=0.76 → x=94 -->
+        <text x="39" y="67" font-size="8.5" text-anchor="end" fill="#555">♌ Leo</text>
+        <line x1="74" y1="63" x2="126" y2="63" stroke="#27AE60" stroke-width="1.5"/>
+        <circle cx="94" cy="63" r="3" fill="#27AE60"/>
+
+        <!-- Virgo ♍ OR=0.74 → x=88, CI[0.61,0.89] → [67,120] -->
+        <text x="39" y="78" font-size="8.5" text-anchor="end" fill="#555">♍ Virgo</text>
+        <line x1="67" y1="74" x2="120" y2="74" stroke="#27AE60" stroke-width="1.5"/>
+        <circle cx="88" cy="74" r="3" fill="#27AE60"/>
+
+        <!-- LIBRA ♎ OR=1.03 → x=152, CI[0.85,1.25] → [113,175] — RED -->
+        <text x="39" y="89" font-size="8.5" text-anchor="end" fill="#C0392B" font-weight="700">♎ Libra</text>
+        <line x1="113" y1="85" x2="175" y2="85" stroke="#E74C3C" stroke-width="1.8"/>
+        <circle cx="152" cy="85" r="3.5" fill="#E74C3C"/>
+        <text x="179" y="89" font-size="8" fill="#E74C3C" font-weight="600">p=.94</text>
+
+        <!-- Scorpio ♏ OR=0.77 → x=97 -->
+        <text x="39" y="100" font-size="8.5" text-anchor="end" fill="#555">♏ Scorpio</text>
+        <line x1="76" y1="96" x2="128" y2="96" stroke="#27AE60" stroke-width="1.5"/>
+        <circle cx="97" cy="96" r="3" fill="#27AE60"/>
+
+        <!-- Sagittarius ♐ OR=0.78 → x=99 -->
+        <text x="39" y="111" font-size="8.5" text-anchor="end" fill="#555">♐ Sag.</text>
+        <line x1="78" y1="107" x2="129" y2="107" stroke="#27AE60" stroke-width="1.5"/>
+        <circle cx="99" cy="107" r="3" fill="#27AE60"/>
+
+        <!-- Capricorn ♑ OR=0.76 → x=94 -->
+        <text x="39" y="122" font-size="8.5" text-anchor="end" fill="#555">♑ Cap.</text>
+        <line x1="73" y1="118" x2="125" y2="118" stroke="#27AE60" stroke-width="1.5"/>
+        <circle cx="94" cy="118" r="3" fill="#27AE60"/>
+
+        <!-- Aquarius ♒ OR=0.79 → x=100 -->
+        <text x="39" y="133" font-size="8.5" text-anchor="end" fill="#555">♒ Aquarius</text>
+        <line x1="79" y1="129" x2="130" y2="129" stroke="#27AE60" stroke-width="1.5"/>
+        <circle cx="100" cy="129" r="3" fill="#27AE60"/>
+
+        <!-- Pisces ♓ OR=0.75 → x=92 -->
+        <text x="39" y="144" font-size="8.5" text-anchor="end" fill="#555">♓ Pisces</text>
+        <line x1="72" y1="140" x2="124" y2="140" stroke="#27AE60" stroke-width="1.5"/>
+        <circle cx="92" cy="140" r="3" fill="#27AE60"/>
+      </svg>
+    </div>
+  </div>
+  <div class="front-footer">
+    <button class="flip-btn" style="background:#117A65;" onclick="flip(14)">Reveal Explanation →</button>
+  </div>
+</div><!-- /front -->
+<div class="card-face card-back">
+  <div style="background:#117A65;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="topic-badge" style="background:#117A65;">P-Hacking &amp; Multiple Testing</span>
+    <span class="station-label">Station 14 — Explanation</span>
+  </div>
+  <div class="back-body">
+    <div class="back-section" style="background:#E8F8F5;">
+      <div class="back-section-label" style="color:#117A65;">What's Wrong</div>
+      <p>Running 12 simultaneous subgroup analyses at α = 0.05 means you'd expect roughly one sign to show a non-significant result even if aspirin works identically for everyone. Gemini and Libra won that lottery. The authors knew this — they included the analysis deliberately, as a reductio ad absurdum, to show that subgroup fishing always produces something that looks meaningful if you run enough cuts. There is no plausible biological mechanism by which birth month affects aspirin's antiplatelet activity.</p>
+    </div>
+    <div class="back-section" style="background:#f7f7f7;border-left:3px solid #117A65;">
+      <div class="back-section-label" style="color:#117A65;">What to Do Instead</div>
+      <p>Pre-specify any planned subgroup analyses before the trial begins and apply corrections for multiplicity. Require a credible biological or mechanistic rationale before interpreting a subgroup difference as real. The overall trial result — aspirin reduces MI mortality by 23% — is the valid finding. Subgroup analyses in a trial of this size are hypothesis-generating at best, even when pre-specified.</p>
+    </div>
+    <div class="ml-impact-box">
+      <div class="ml-impact-label">ML Impact</div>
+      <p>Slicing model evaluation metrics by demographic group, feature bin, confidence decile, or geographic region is routine in ML — and every slice is a hypothesis test. When slices are chosen post-hoc based on which ones show the most interesting patterns, the resulting "disparities" are as susceptible to multiple comparisons inflation as Gemini and Libra are here. Pre-specifying evaluation slices before model training is the ML equivalent of pre-registering subgroup analyses.</p>
+    </div>
+    <div class="takeaway-box" style="background:#117A65;">
+      <div class="takeaway-label">Core Principle</div>
+      Every subgroup cut you run is a hypothesis test. Run enough of them and something will look significant — not because it's real, but because you gave chance enough tries to win.
+    </div>
+  </div>
+  <div class="back-footer">
+    <button class="flip-btn" style="background:#888;" onclick="flip(14)">← Back to Abstract</button>
+  </div>
+</div><!-- /back -->
+</div></div></div>
+
+<!-- ══════════ SLIDE 15: Bohannon Chocolate Sting ══════════ -->
+<div class="slide" id="slide-15">
+<div class="card" id="card-15">
+<div class="card-inner">
+<div class="card-face card-front">
+  <div style="background:#888;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="station-label" style="margin-left:0;">Station 15 of 19</span>
+  </div>
+  <div class="front-body">
+    <div class="front-text">
+      <div>
+        <div class="study-title">Dark Chocolate Accelerates Weight Loss During a Low-Carbohydrate Diet</div>
+        <div class="study-source">International Archives of Medicine, 2015 &nbsp;·&nbsp; N = 16</div>
+      </div>
+      <div class="abstract-box" style="border-color:#117A65;background:#E8F8F5;">
+        Sixteen adults were randomized to three groups: low-carbohydrate control, low-carbohydrate with 1.5 oz dark chocolate daily, or conventional diet. After 21 days, <span class="kf">the chocolate group lost weight 10% faster than the low-carb control</span> (p = 0.04) and additionally showed improvements in cholesterol, sleep quality, and well-being. The authors recommend inclusion of dark chocolate in weight-loss protocols.
+      </div>
+      <div class="meta-chips">
+        <span class="chip"><strong>N per group:</strong> ~5</span>
+        <span class="chip"><strong>Outcomes measured:</strong> 18</span>
+        <span class="chip"><strong>Journal:</strong> pay-to-publish, accepted in 11 days</span>
+      </div>
+    </div>
+    <div class="front-illo">
+      <svg viewBox="0 0 210 185" width="95%" style="max-height:185px;">
+        <text x="100" y="13" font-size="9.5" text-anchor="middle" fill="#555">18 outcomes tested — one reached p&lt;0.05</text>
+        <rect x="8"  y="26" width="18" height="32" fill="#ccc" rx="2"/>
+        <rect x="30" y="21" width="18" height="37" fill="#ccc" rx="2"/>
+        <rect x="52" y="29" width="18" height="29" fill="#ccc" rx="2"/>
+        <rect x="74" y="24" width="18" height="34" fill="#ccc" rx="2"/>
+        <rect x="96" y="27" width="18" height="31" fill="#ccc" rx="2"/>
+        <rect x="118" y="19" width="18" height="39" fill="#ccc" rx="2"/>
+        <rect x="8"  y="70" width="18" height="34" fill="#ccc" rx="2"/>
+        <rect x="30" y="75" width="18" height="29" fill="#ccc" rx="2"/>
+        <rect x="52" y="67" width="18" height="37" fill="#ccc" rx="2"/>
+        <rect x="74" y="72" width="18" height="32" fill="#ccc" rx="2"/>
+        <rect x="96" y="59" width="18" height="45" fill="#117A65" rx="2"/>
+        <text x="105" y="55" font-size="8" text-anchor="middle" fill="#117A65" font-weight="700">p=0.04 ✓</text>
+        <rect x="118" y="69" width="18" height="35" fill="#ccc" rx="2"/>
+        <rect x="8"  y="116" width="18" height="30" fill="#ccc" rx="2"/>
+        <rect x="30" y="112" width="18" height="34" fill="#ccc" rx="2"/>
+        <rect x="52" y="118" width="18" height="28" fill="#ccc" rx="2"/>
+        <rect x="74" y="114" width="18" height="32" fill="#ccc" rx="2"/>
+        <rect x="96" y="119" width="18" height="27" fill="#ccc" rx="2"/>
+        <rect x="118" y="116" width="18" height="30" fill="#ccc" rx="2"/>
+        <line x1="5" y1="148" x2="145" y2="148" stroke="#ddd" stroke-width="1"/>
+        <text x="100" y="163" font-size="10" text-anchor="middle" fill="#C0392B" font-weight="600">P(≥1 significant) ≈ 64% by chance alone</text>
+        <text x="100" y="178" font-size="9" text-anchor="middle" fill="#888" font-style="italic">18 outcomes, 5 subjects/arm, no peer review</text>
+      </svg>
+    </div>
+  </div>
+  <div class="front-footer">
+    <button class="flip-btn" style="background:#117A65;" onclick="flip(15)">Reveal Explanation →</button>
+  </div>
+</div><!-- /front -->
+<div class="card-face card-back">
+  <div style="background:#117A65;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="topic-badge" style="background:#117A65;">P-Hacking &amp; Multiple Testing</span>
+    <span class="station-label">Station 15 — Explanation</span>
+  </div>
+  <div class="back-body">
+    <div class="back-section" style="background:#E8F8F5;">
+      <div class="back-section-label" style="color:#117A65;">What's Wrong</div>
+      <p>This was a deliberate sting. Science journalist John Bohannon designed a real trial — 5 participants per arm, 18 outcome variables — to prove how easily a p &lt; 0.05 result could be manufactured and published. With 18 outcomes at α = 0.05, the probability of finding at least one significant result by chance is ~64%. He submitted to a predatory pay-to-publish journal that accepted the paper in 11 days with no meaningful peer review. European tabloids ran headlines within weeks.</p>
+    </div>
+    <div class="back-section" style="background:#f7f7f7;border-left:3px solid #117A65;">
+      <div class="back-section-label" style="color:#117A65;">What to Do Instead</div>
+      <p>Pre-register a single primary endpoint before collecting data. Apply Bonferroni or FDR corrections when testing multiple outcomes. Ensure adequate statistical power — for a true 10% weight-loss difference, far more than 5 participants per arm are required. And scrutinize the venue: a journal whose business model is acceptance fees cannot be relied upon for gatekeeping.</p>
+    </div>
+    <div class="ml-impact-box">
+      <div class="ml-impact-label">ML Impact</div>
+      <p>Hyperparameter search and architecture search reproduce this problem exactly: each configuration is an implicit hypothesis test on the same data. Without a held-out test set reserved until after all search is complete, the "best" configuration is whichever one won the noise lottery — the same logic as Bohannon's winning outcome variable.</p>
+    </div>
+    <div class="takeaway-box" style="background:#117A65;">
+      <div class="takeaway-label">Core Principle</div>
+      Measuring 18 outcomes and reporting the one that crossed p &lt; 0.05 is not a positive result — it is proof that your alpha level was wrong from the start.
+    </div>
+  </div>
+  <div class="back-footer">
+    <button class="flip-btn" style="background:#888;" onclick="flip(15)">← Back to Abstract</button>
+  </div>
+</div><!-- /back -->
+</div></div></div>
+
+<!-- ══════════ SLIDE 16: Wansink / Researcher Degrees of Freedom ══════════ -->
+<div class="slide" id="slide-16">
+<div class="card" id="card-16">
+<div class="card-inner">
+<div class="card-face card-front">
+  <div style="background:#888;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="station-label" style="margin-left:0;">Station 16 of 19</span>
+  </div>
+  <div class="front-body">
+    <div class="front-text">
+      <div>
+        <div class="study-title">Bottomless Bowls: Why Visual Cues of Portion Size May Influence Intake</div>
+        <div class="study-source">Wansink, Painter &amp; North, Obesity Research, 2005 &nbsp;·&nbsp; Cornell Food &amp; Brand Lab</div>
+      </div>
+      <div class="abstract-box" style="border-color:#117A65;background:#E8F8F5;">
+        Participants were randomly assigned to eat soup from a normal bowl or a self-refilling "bottomless" bowl that slowly replenished through hidden tubing. <span class="kf">Bottomless-bowl participants consumed 73% more soup yet did not report greater satiation</span> than controls (p &lt; 0.05). This finding is part of a broader program of ~200 studies demonstrating that consumption is driven by environmental cues, not hunger.
+      </div>
+      <div class="meta-chips">
+        <span class="chip"><strong>Lab:</strong> Cornell Food &amp; Brand Lab</span>
+        <span class="chip"><strong>Published studies:</strong> ~200</span>
+        <span class="chip"><strong>Papers retracted:</strong> 13+</span>
+      </div>
+    </div>
+    <div class="front-illo">
+      <svg viewBox="0 0 210 185" width="95%" style="max-height:185px;">
+        <ellipse cx="105" cy="128" rx="65" ry="27" fill="#E8F8F5" stroke="#117A65" stroke-width="1.5"/>
+        <text x="105" y="123" font-size="9.5" text-anchor="middle" fill="#117A65" font-weight="600">DATASET</text>
+        <text x="105" y="140" font-size="8.5" text-anchor="middle" fill="#555">one failed study</text>
+        <line x1="40" y1="18" x2="62" y2="100" stroke="#9C640C" stroke-width="3" stroke-linecap="round"/>
+        <line x1="62" y1="100" x2="62" y2="128" stroke="#aaa" stroke-width="1.2" stroke-dasharray="3,2"/>
+        <line x1="105" y1="14" x2="105" y2="100" stroke="#9C640C" stroke-width="3" stroke-linecap="round"/>
+        <line x1="105" y1="100" x2="105" y2="128" stroke="#aaa" stroke-width="1.2" stroke-dasharray="3,2"/>
+        <line x1="170" y1="18" x2="148" y2="100" stroke="#9C640C" stroke-width="3" stroke-linecap="round"/>
+        <line x1="148" y1="100" x2="148" y2="128" stroke="#aaa" stroke-width="1.2" stroke-dasharray="3,2"/>
+        <text x="55" y="12" font-size="9" text-anchor="middle" fill="#bbb">—</text>
+        <text x="105" y="8" font-size="11" text-anchor="middle" fill="#117A65" font-weight="700">p = 0.03 !</text>
+        <text x="158" y="12" font-size="9" text-anchor="middle" fill="#bbb">—</text>
+        <text x="105" y="168" font-size="9.5" text-anchor="middle" fill="#888" font-style="italic">"Run every analysis until something comes up significant"</text>
+        <text x="105" y="181" font-size="8.5" text-anchor="middle" fill="#C0392B">— Wansink's instructions to a visiting scholar, 2017 blog post</text>
+      </svg>
+    </div>
+  </div>
+  <div class="front-footer">
+    <button class="flip-btn" style="background:#117A65;" onclick="flip(16)">Reveal Explanation →</button>
+  </div>
+</div><!-- /front -->
+<div class="card-face card-back">
+  <div style="background:#117A65;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="topic-badge" style="background:#117A65;">P-Hacking &amp; Multiple Testing</span>
+    <span class="station-label">Station 16 — Explanation</span>
+  </div>
+  <div class="back-body">
+    <div class="back-section" style="background:#E8F8F5;">
+      <div class="back-section-label" style="color:#117A65;">What's Wrong</div>
+      <p>In 2017, Wansink published a blog post bragging about how he handed a visiting scholar a dataset that had "failed to produce findings" and instructed her to "run every variable against every variable" until something p &lt; 0.05 emerged. She found five publishable results. This is researcher degrees of freedom in action: when you can choose which outcomes to test, how to code variables, which participants to exclude, and when to stop collecting, you will always find something. Data re-analysis of his papers subsequently revealed impossible statistical patterns — means and standard deviations that couldn't produce the reported p-values.</p>
+    </div>
+    <div class="back-section" style="background:#f7f7f7;border-left:3px solid #117A65;">
+      <div class="back-section-label" style="color:#117A65;">What to Do Instead</div>
+      <p>Pre-registration locks in the analysis plan before data collection. The critical distinction is between confirmatory analysis (pre-specified, tests a hypothesis) and exploratory analysis (generates new hypotheses). Exploratory findings should be labeled as such and require independent replication before being treated as established — not cited as findings in the next study.</p>
+    </div>
+    <div class="ml-impact-box">
+      <div class="ml-impact-label">ML Impact</div>
+      <p>Iterating on a model while evaluating on the test set is Wansink's error replicated. Each time you look at test performance and adjust the model, you've consumed some of the test set's ability to give an honest estimate. The result is a model that is overfit-to-test, with reported performance that will be optimistic in deployment.</p>
+    </div>
+    <div class="takeaway-box" style="background:#117A65;">
+      <div class="takeaway-label">Core Principle</div>
+      Researcher degrees of freedom — choices about outcomes, exclusions, and stopping — inflate false positive rates even without any intent to deceive. Lock the analysis plan before touching the data.
+    </div>
+  </div>
+  <div class="back-footer">
+    <button class="flip-btn" style="background:#888;" onclick="flip(16)">← Back to Abstract</button>
+  </div>
+</div><!-- /back -->
+</div></div></div>
+
+<!-- ══════════ SLIDE 17: Power Poses ══════════ -->
+<div class="slide" id="slide-17">
+<div class="card" id="card-17">
+<div class="card-inner">
+<div class="card-face card-front">
+  <div style="background:#888;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="station-label" style="margin-left:0;">Station 17 of 19</span>
+  </div>
+  <div class="front-body">
+    <div class="front-text">
+      <div>
+        <div class="study-title">Power Posing: Brief Nonverbal Displays Affect Neuroendocrine Levels and Risk Tolerance</div>
+        <div class="study-source">Carney, Cuddy &amp; Yap, Psychological Science, 2010 &nbsp;·&nbsp; N = 42</div>
+      </div>
+      <div class="abstract-box" style="border-color:#117A65;background:#E8F8F5;">
+        Forty-two participants were randomly assigned to hold either expansive "high-power" or contractive "low-power" body postures for two minutes. High-power posers showed <span class="kf">significantly higher testosterone (20% increase, p = 0.05)</span>, lower cortisol (25% decrease, p = 0.04), and greater risk tolerance in a gambling task (p = 0.03) compared to low-power posers. The authors conclude that two minutes of posture change produces measurable hormonal and behavioral effects.
+      </div>
+      <div class="meta-chips">
+        <span class="chip"><strong>N:</strong> 42 (21 per group)</span>
+        <span class="chip"><strong>DVs:</strong> testosterone, cortisol, risk-taking</span>
+        <span class="chip"><strong>TED talk views:</strong> 75 million+</span>
+      </div>
+    </div>
+    <div class="front-illo">
+      <svg viewBox="0 0 210 185" width="95%" style="max-height:185px;">
+        <circle cx="105" cy="28" r="13" fill="#E8F8F5" stroke="#117A65" stroke-width="2"/>
+        <line x1="105" y1="41" x2="105" y2="100" stroke="#117A65" stroke-width="2.5"/>
+        <line x1="105" y1="57" x2="58" y2="40" stroke="#117A65" stroke-width="2.5" stroke-linecap="round"/>
+        <line x1="105" y1="57" x2="152" y2="40" stroke="#117A65" stroke-width="2.5" stroke-linecap="round"/>
+        <line x1="105" y1="100" x2="80" y2="135" stroke="#117A65" stroke-width="2.5" stroke-linecap="round"/>
+        <line x1="105" y1="100" x2="130" y2="135" stroke="#117A65" stroke-width="2.5" stroke-linecap="round"/>
+        <rect x="155" y="36" width="52" height="18" rx="3" fill="#E8F8F5" stroke="#117A65" stroke-width="1"/>
+        <text x="181" y="49" font-size="8.5" text-anchor="middle" fill="#117A65" font-weight="600">T↑ p = 0.05</text>
+        <rect x="155" y="60" width="52" height="18" rx="3" fill="#E8F8F5" stroke="#117A65" stroke-width="1"/>
+        <text x="181" y="73" font-size="8.5" text-anchor="middle" fill="#117A65" font-weight="600">C↓ p = 0.04</text>
+        <rect x="155" y="84" width="52" height="18" rx="3" fill="#E8F8F5" stroke="#117A65" stroke-width="1"/>
+        <text x="181" y="97" font-size="8.5" text-anchor="middle" fill="#117A65" font-weight="600">Risk↑ p = 0.03</text>
+        <line x1="152" y1="46" x2="155" y2="46" stroke="#117A65" stroke-width="1" opacity=".4"/>
+        <line x1="152" y1="57" x2="155" y2="70" stroke="#117A65" stroke-width="1" opacity=".4"/>
+        <line x1="152" y1="78" x2="155" y2="93" stroke="#117A65" stroke-width="1" opacity=".4"/>
+        <text x="105" y="155" font-size="10" text-anchor="middle" fill="#C0392B" font-weight="600">Replication (N = 200): no hormonal effect found</text>
+        <text x="105" y="170" font-size="9.5" text-anchor="middle" fill="#555">Co-author Carney publicly disavowed the paper (2016)</text>
+      </svg>
+    </div>
+  </div>
+  <div class="front-footer">
+    <button class="flip-btn" style="background:#117A65;" onclick="flip(17)">Reveal Explanation →</button>
+  </div>
+</div><!-- /front -->
+<div class="card-face card-back">
+  <div style="background:#117A65;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="topic-badge" style="background:#117A65;">P-Hacking &amp; Multiple Testing</span>
+    <span class="station-label">Station 17 — Explanation</span>
+  </div>
+  <div class="back-body">
+    <div class="back-section" style="background:#E8F8F5;">
+      <div class="back-section-label" style="color:#117A65;">What's Wrong</div>
+      <p>With N = 42, three dependent variables, and all p-values hovering right at 0.05, this study was severely underpowered to detect reliable effects and highly likely to produce false positives. A direct replication with N = 200 found no significant effect on testosterone or cortisol. The pattern of p-values barely crossing 0.05 is a statistical signature of optional stopping — collecting data until results cross the threshold, then stopping. In 2016, co-author Dana Carney published a public statement acknowledging that the lab had used multiple analytical decision points that inflated false positive rates, and explicitly disavowed the paper.</p>
+    </div>
+    <div class="back-section" style="background:#f7f7f7;border-left:3px solid #117A65;">
+      <div class="back-section-label" style="color:#117A65;">What to Do Instead</div>
+      <p>Power analysis before data collection to determine required N. Pre-registration of primary endpoints. Stopping rules established in advance. Correction for multiple DVs. A registered replication before any large public claims. The TED talk seen by 75 million people was based on a result that required N = 200 to show was likely an artifact — a timeline problem that pre-registration and replication would have caught.</p>
+    </div>
+    <div class="ml-impact-box">
+      <div class="ml-impact-label">ML Impact</div>
+      <p>Model evaluation on small held-out sets produces exactly this pattern: with 40 test examples and multiple metrics (accuracy, F1, AUC, calibration), at least one will clear whatever threshold you've set by chance. Specifying which metric is primary before training — not choosing the best-performing metric post-hoc — is the pre-registration equivalent.</p>
+    </div>
+    <div class="takeaway-box" style="background:#117A65;">
+      <div class="takeaway-label">Core Principle</div>
+      Small samples, multiple outcome measures, and flexible stopping is a formula for false positives. A p-value right at 0.05 from an underpowered study should raise suspicion, not confidence.
+    </div>
+  </div>
+  <div class="back-footer">
+    <button class="flip-btn" style="background:#888;" onclick="flip(17)">← Back to Abstract</button>
+  </div>
+</div><!-- /back -->
+</div></div></div>
+
+<!-- ══════════ SLIDE 18: Kirsch — Statistical vs. Clinical Significance ══════════ -->
+<div class="slide" id="slide-18">
+<div class="card" id="card-18">
+<div class="card-inner">
+<div class="card-face card-front">
+  <div style="background:#888;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="station-label" style="margin-left:0;">Station 18 of 19</span>
+  </div>
+  <div class="front-body">
+    <div class="front-text">
+      <div>
+        <div class="study-title">Initial Severity and Antidepressant Benefits: A Meta-Analysis of Data Submitted to the FDA</div>
+        <div class="study-source">Kirsch et al., PLOS Medicine, 2008 &nbsp;·&nbsp; N = 5,133 (all FDA trial data, published + unpublished)</div>
+      </div>
+      <div class="abstract-box" style="border-color:#1A6B8A;background:#E8F4F8;">
+        Using Freedom of Information requests, we obtained all FDA trial data for six major antidepressants — including unpublished trials. Meta-analysis across all 5,133 patients confirms that antidepressants outperform placebo: <span class="kf">mean drug-placebo difference = 1.80 HAM-D points (p &lt; 0.001)</span>. However, this falls below the 3-point NICE threshold for clinical significance except in patients with initial HAM-D scores ≥ 28 (very severe depression).
+      </div>
+      <div class="meta-chips">
+        <span class="chip"><strong>Effect size:</strong> Δ = 1.80 HAM-D pts</span>
+        <span class="chip"><strong>Clinical threshold:</strong> 3.0 pts above placebo</span>
+        <span class="chip"><strong>Data:</strong> published + unpublished FDA trials</span>
+      </div>
+    </div>
+    <div class="front-illo">
+      <svg viewBox="0 0 210 185" width="95%" style="max-height:185px;">
+        <text x="8" y="120" font-size="8.5" fill="#888" transform="rotate(-90,8,120)">HAM-D reduction</text>
+        <line x1="30" y1="18" x2="30" y2="143" stroke="#ccc" stroke-width="1.5"/>
+        <line x1="30" y1="143" x2="200" y2="143" stroke="#ccc" stroke-width="1.5"/>
+        <rect x="50" y="93" width="48" height="50" fill="#D5D8DC" rx="3"/>
+        <text x="74" y="89" font-size="9.5" text-anchor="middle" fill="#777">−7.8 pts</text>
+        <text x="74" y="160" font-size="9.5" text-anchor="middle" fill="#555">Placebo</text>
+        <rect x="118" y="78" width="48" height="65" fill="#1A6B8A" rx="3"/>
+        <text x="142" y="74" font-size="9.5" text-anchor="middle" fill="#1A6B8A">−9.6 pts</text>
+        <text x="142" y="160" font-size="9.5" text-anchor="middle" fill="#555">Drug</text>
+        <line x1="98" y1="91" x2="118" y2="76" stroke="#C0392B" stroke-width="1.2" stroke-dasharray="3,2"/>
+        <text x="108" y="70" font-size="8.5" text-anchor="middle" fill="#C0392B" font-weight="600">Δ = 1.8 pts</text>
+        <line x1="35" y1="53" x2="195" y2="53" stroke="#E74C3C" stroke-width="1.8" stroke-dasharray="5,3"/>
+        <text x="190" y="48" font-size="7.5" fill="#E74C3C" text-anchor="end">Clinical threshold</text>
+        <text x="190" y="60" font-size="7.5" fill="#E74C3C" text-anchor="end">(3 pts above placebo)</text>
+        <text x="105" y="178" font-size="10" text-anchor="middle" fill="#117A65" font-weight="600">p &lt; 0.001 &nbsp;·&nbsp; yet below clinical significance</text>
+      </svg>
+    </div>
+  </div>
+  <div class="front-footer">
+    <button class="flip-btn" style="background:#1A6B8A;" onclick="flip(18)">Reveal Explanation →</button>
+  </div>
+</div><!-- /front -->
+<div class="card-face card-back">
+  <div style="background:#1A6B8A;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="topic-badge" style="background:#1A6B8A;">Statistical vs. Clinical Significance</span>
+    <span class="station-label">Station 18 — Explanation</span>
+  </div>
+  <div class="back-body">
+    <div class="back-section" style="background:#E8F4F8;">
+      <div class="back-section-label" style="color:#1A6B8A;">What's Wrong</div>
+      <p>Nothing is "wrong" with the statistics — that's the point. The drug-placebo difference is real and highly significant (p &lt; 0.001). But a 1.8-point improvement on a 52-point scale, against a placebo response of 7.8 points, falls below what clinicians consider meaningful to patients. Statistical significance tells you the effect is distinguishable from zero; it tells you nothing about whether it matters. The paper's contribution was showing that decades of published trials had conflated "statistically real" with "clinically useful," in part because the unpublished negative trials had never been included in meta-analyses.</p>
+    </div>
+    <div class="back-section" style="background:#f7f7f7;border-left:3px solid #1A6B8A;">
+      <div class="back-section-label" style="color:#1A6B8A;">What to Do Instead</div>
+      <p>Report effect sizes alongside p-values, and contextualize them against domain-specific thresholds. In medicine, the Number Needed to Treat (NNT) and the Minimum Clinically Important Difference (MCID) are the right yardsticks. With sufficiently large samples, trivially small effects become statistically significant. Kirsch's meta-analysis also illustrated the file-drawer problem: including unpublished trials changed the overall picture entirely.</p>
+    </div>
+    <div class="ml-impact-box">
+      <div class="ml-impact-label">ML Impact</div>
+      <p>With large datasets, nearly any model improvement will be statistically significant. A recommendation system with 10M users that improves click-through rate by 0.01 percentage points has a highly significant A/B test — but users can't perceive the difference. Reporting accuracy uplift without asking whether the improvement clears whatever threshold makes the system worth deploying is this error in ML form.</p>
+    </div>
+    <div class="takeaway-box" style="background:#1A6B8A;">
+      <div class="takeaway-label">Core Principle</div>
+      Statistical significance says an effect is real. Practical significance says it matters. Large samples can render irrelevant differences "significant." Always ask: meaningful compared to what?
+    </div>
+  </div>
+  <div class="back-footer">
+    <button class="flip-btn" style="background:#888;" onclick="flip(18)">← Back to Abstract</button>
+  </div>
+</div><!-- /back -->
+</div></div></div>
+
+<!-- ══════════ SLIDE 19: Himmicanes ══════════ -->
+<div class="slide" id="slide-19">
+<div class="card" id="card-19">
+<div class="card-inner">
+<div class="card-face card-front">
+  <div style="background:#888;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="station-label" style="margin-left:0;">Station 19 of 19</span>
+  </div>
+  <div class="front-body">
+    <div class="front-text">
+      <div>
+        <div class="study-title">Female Hurricanes Are Deadlier Than Male Hurricanes</div>
+        <div class="study-source">Jung et al., PNAS, 2014 &nbsp;·&nbsp; N = 94 Atlantic hurricanes (1950–2012)</div>
+      </div>
+      <div class="abstract-box" style="border-color:#117A65;background:#E8F8F5;">
+        Analyzing 94 Atlantic hurricanes from 1950 to 2012, we find that <span class="kf">female-named hurricanes caused significantly more deaths than male-named ones</span> (IRR = 1.47, 95% CI: 1.02–2.12, p = 0.03), controlling for minimum pressure, year, and property damage. A laboratory study confirmed that participants rated female-named hypothetical storms as less threatening, supporting the interpretation that feminine storm names reduce perceived danger and therefore evacuation compliance.
+      </div>
+      <div class="meta-chips">
+        <span class="chip"><strong>N:</strong> 94 storms over 62 years</span>
+        <span class="chip"><strong>Controlled for:</strong> pressure, year, damage</span>
+        <span class="chip"><strong>Effect driven by:</strong> 2 outlier storms</span>
+      </div>
+    </div>
+    <div class="front-illo">
+      <svg viewBox="0 0 210 185" width="95%" style="max-height:185px;">
+        <path d="M105 18 Q126 8 130 26 Q134 44 117 49 Q100 54 91 42 Q82 30 96 22 Q110 14 121 25" fill="none" stroke="#1A5276" stroke-width="2.5"/>
+        <text x="105" y="54" font-size="9" text-anchor="middle" fill="#888">Mean deaths: female vs. male named storms</text>
+        <rect x="42" y="66" width="44" height="72" fill="#E74C3C" rx="3"/>
+        <text x="64" y="62" font-size="9.5" text-anchor="middle" fill="#E74C3C" font-weight="700">58 deaths</text>
+        <text x="64" y="152" font-size="9.5" text-anchor="middle" fill="#555">Female</text>
+        <rect x="124" y="111" width="44" height="27" fill="#2980B9" rx="3"/>
+        <text x="146" y="107" font-size="9.5" text-anchor="middle" fill="#2980B9" font-weight="700">16 deaths</text>
+        <text x="146" y="152" font-size="9.5" text-anchor="middle" fill="#555">Male</text>
+        <text x="105" y="167" font-size="10" text-anchor="middle" fill="#C0392B" font-weight="600">Remove Katrina + Audrey → effect disappears</text>
+        <text x="105" y="181" font-size="8.5" text-anchor="middle" fill="#888" font-style="italic">Both were female names from the pre-1979 all-female-name era</text>
+      </svg>
+    </div>
+  </div>
+  <div class="front-footer">
+    <button class="flip-btn" style="background:#117A65;" onclick="flip(19)">Reveal Explanation →</button>
+  </div>
+</div><!-- /front -->
+<div class="card-face card-back">
+  <div style="background:#117A65;height:6px;flex-shrink:0;"></div>
+  <div class="card-header">
+    <span class="topic-badge" style="background:#117A65;">P-Hacking &amp; Multiple Testing</span>
+    <span class="station-label">Station 19 — Explanation</span>
+  </div>
+  <div class="back-body">
+    <div class="back-section" style="background:#E8F8F5;">
+      <div class="back-section-label" style="color:#117A65;">What's Wrong</div>
+      <p>The entire effect is driven by two outliers — Hurricane Katrina (1,800 deaths, 2005) and Hurricane Audrey (416 deaths, 1957) — both female names. Crucially, before 1979 <em>all</em> Atlantic hurricanes had female names, meaning the pre-1979 portion of the sample is not a fair comparison: it contains all the deadliest historical storms in an era with less evacuation infrastructure, and every one of them is female-named. Controlling for "year" doesn't capture this structural break. Remove the two extreme outliers or analyze post-1979 storms only, and p &gt; 0.5.</p>
+    </div>
+    <div class="back-section" style="background:#f7f7f7;border-left:3px solid #117A65;">
+      <div class="back-section-label" style="color:#117A65;">What to Do Instead</div>
+      <p>Outlier sensitivity analyses should be standard practice for small-N observational datasets: report results with and without influential observations. Era-based structural breaks require careful handling — pooling pre- and post-1979 data conflates two naming regimes. Mechanistic plausibility matters too: does any cognitive model explain how a storm's name, rather than its Category or path, changes evacuation decisions at population scale?</p>
+    </div>
+    <div class="ml-impact-box">
+      <div class="ml-impact-label">ML Impact</div>
+      <p>Label imbalance and historical distribution shifts create exactly this structure in ML datasets. A model trained on pooled data with an era-correlated feature will find spurious predictors. Evaluating model performance by cohort or era — not just overall — is the equivalent of removing the two outlier storms to check whether the effect is real or driven by a structural data artifact.</p>
+    </div>
+    <div class="takeaway-box" style="background:#117A65;">
+      <div class="takeaway-label">Core Principle</div>
+      A "significant" result from 94 observations that hinges on 2 extreme outliers is not a finding — it is a sensitivity. Always report what happens when influential points are removed.
+    </div>
+  </div>
+  <div class="back-footer">
+    <button class="flip-btn" style="background:#888;" onclick="flip(19)">← Back to Abstract</button>
+  </div>
+</div><!-- /back -->
+</div></div></div>
+
+<!-- ══════════ SLIDE 20: DEBRIEF ══════════ -->
+<div class="slide" id="slide-20">
+<div class="static-card">
+<div style="background:#2C3E50;height:6px;flex-shrink:0;"></div>
+<div class="center-layout">
+  <div class="eyebrow">Gallery Walk Debrief</div>
+  <h2 style="font-size:30px;font-weight:800;color:#1a1a2e;">What did you notice?</h2>
+  <div class="debrief-grid">
+    <div class="debrief-card" style="background:#FDEDEC;">
+      <div class="debrief-label" style="color:#B03A2E;">Causation &amp; Confounding</div>
+      <p>Were any of the adjustments made convincing? What confounder would be hardest to control for across all three examples? What does it take to move from "associated with" to "causes"?</p>
+    </div>
+    <div class="debrief-card" style="background:#FEF5E7;">
+      <div class="debrief-label" style="color:#9C640C;">Survivorship Bias</div>
+      <p>Both examples have a missing-data structure. What is the missing data in each case, and why can't we just go get it? What domains in your own work might have this problem?</p>
+    </div>
+    <div class="debrief-card" style="background:#EAF2FF;">
+      <div class="debrief-label" style="color:#1A5276;">Simpson's Paradox</div>
+      <p>The aggregate told the opposite story from the subgroups. Is there a general rule for when to report aggregate vs. stratified results? Who might be harmed by the aggregate finding?</p>
+    </div>
+    <div class="debrief-card" style="background:#E8F8F5;">
+      <div class="debrief-label" style="color:#117A65;">P-Hacking &amp; Multiple Testing</div>
+      <p>Three different mechanisms, same effect: inflated false positive rate. What do stopping rules, uncorrected mass testing, and forking paths have in common structurally? What would each fix cost?</p>
+    </div>
+    <div class="debrief-card" style="background:#F4ECF7;">
+      <div class="debrief-label" style="color:#6C3483;">Circular Analysis</div>
+      <p>The fMRI and ML examples look different on the surface. What's the shared logical structure? What word would you use to describe the error to someone outside statistics?</p>
+    </div>
+    <div class="debrief-card" style="background:#EAFAF1;">
+      <div class="debrief-label" style="color:#1E8449;">Dichotomization</div>
+      <p>The threshold choice changed who counts as "sick." Who makes that decision — and what incentives shape it? What would a decision-theoretic approach look like?</p>
+    </div>
+    <div class="debrief-card" style="background:#FEF9E7;">
+      <div class="debrief-label" style="color:#7E5109;">Pseudoreplication</div>
+      <p>This error inflates sample size without adding information. Can you think of an analogous structure in your domain — where measurements look independent but aren't?</p>
+    </div>
+    <div class="debrief-card" style="background:#E0F2F7;">
+      <div class="debrief-label" style="color:#1A6B8A;">Statistical vs. Clinical Significance</div>
+      <p>The antidepressant effect was real and p &lt; 0.001 — and yet arguably useless for most patients. How do you decide, in your domain, what effect size is large enough to matter? Who should set that threshold?</p>
+    </div>
+    <div class="debrief-card" style="background:#f5f5f5;border:1.5px solid #ddd;">
+      <div class="debrief-label" style="color:#555;">Across All Eight</div>
+      <p>Which error do you think is most common in the published literature you read? Which is hardest to detect as a reader? Which would you be most likely to make by accident?</p>
+    </div>
+  </div>
+</div>
+</div>
+</div>
+
+</div><!-- /.slide-wrapper -->
+
+<nav>
+  <button id="prev-btn" onclick="navigate(-1)" disabled>← Prev</button>
+  <span id="slide-counter">Introduction</span>
+  <button id="next-btn" onclick="navigate(1)">Next →</button>
+</nav>
+
+<script>
+let current = 0;
+const slides = document.querySelectorAll('.slide');
+const total = slides.length; // 19
+
+const labels = [
+  'Introduction',
+  'Station 1 of 19',
+  'Station 2 of 19',
+  'Station 3 of 19',
+  'Station 4 of 19',
+  'Station 5 of 19',
+  'Station 6 of 19',
+  'Station 7 of 19',
+  'Station 8 of 19',
+  'Station 9 of 19',
+  'Station 10 of 19',
+  'Station 11 of 19',
+  'Station 12 of 19',
+  'Station 13 of 19',
+  'Station 14 of 19',
+  'Station 15 of 19',
+  'Station 16 of 19',
+  'Station 17 of 19',
+  'Station 18 of 19',
+  'Station 19 of 19',
+  'Debrief'
+];
+
+function navigate(dir) {
+  slides[current].classList.remove('active');
+  current = Math.max(0, Math.min(total - 1, current + dir));
+  slides[current].classList.add('active');
+  document.getElementById('slide-counter').textContent = labels[current];
+  document.getElementById('prev-btn').disabled = current === 0;
+  document.getElementById('next-btn').disabled = current === total - 1;
+}
+
+function flip(n) {
+  document.getElementById('card-' + n).classList.toggle('flipped');
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') navigate(1);
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   navigate(-1);
+});
+</script>
+</body>
+</html>
