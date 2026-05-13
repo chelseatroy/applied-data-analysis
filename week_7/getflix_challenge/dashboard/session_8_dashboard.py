@@ -42,7 +42,7 @@ SHEET_URL = (
     "export?format=csv&gid=748395572"
 )
 NAME_COL = "Name"
-URL_COL  = "ngrok_url"
+URL_COL  = "URL"
 
 CONFIG = {"user_id": 42, "genre": "Drama", "timeout": 4, "interval": 15}
 GLOBAL_TIMEOUT = 8  # seconds before /data abandons slow servers
