@@ -27,6 +27,8 @@ import argparse
 import csv
 import io
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from datetime import datetime
 
 import requests
@@ -43,6 +45,7 @@ NAME_COL = "Name"
 URL_COL  = "ngrok_url"
 
 CONFIG = {"user_id": 42, "genre": "Drama", "timeout": 4, "interval": 15}
+GLOBAL_TIMEOUT = 8  # seconds before /data abandons slow servers
 
 _FALLBACK_MOVIES = [
     {"movie_id": 50,  "title": "Star Wars (1977)"},
@@ -142,7 +145,20 @@ def data():
     timeout = CONFIG["timeout"]
 
     rows, sheet_err = fetch_rows()
-    results = [query_server(n, u, user_id, genre, timeout) for n, u in rows]
+    results = []
+    if rows:
+        with ThreadPoolExecutor(max_workers=len(rows)) as executor:
+            future_to_name = {
+                executor.submit(query_server, n, u, user_id, genre, timeout): n
+                for n, u in rows
+            }
+            try:
+                for future in as_completed(future_to_name, timeout=GLOBAL_TIMEOUT):
+                    results.append(future.result())
+            except FuturesTimeoutError:
+                for future, name in future_to_name.items():
+                    if name not in {r["name"] for r in results}:
+                        results.append({"name": name, "status": "timeout"})
     online  = [r for r in results if r.get("status") == "online"]
     labels  = sorted(set(str(r.get("cluster_label", "?")) for r in online))
 
