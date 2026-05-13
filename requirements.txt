@@ -10,4 +10,4 @@ scikit-surprise==1.1.4
 scipy==1.14.1
 seaborn==0.13.2
 statsmodels==0.14.6
-tensorflow==2.21.0
+tensorflow==2.15.0
