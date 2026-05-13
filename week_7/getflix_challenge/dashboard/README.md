@@ -6,6 +6,8 @@ Instructor-facing live dashboard for the Getflix ML operationalization activity.
 
 **URL:** https://getflix-inference-dashboard.onrender.com
 
+**Render admin** (instructor only — manage deploys, logs, env vars): https://dashboard.render.com
+
 ## What it does
 
 Four tabs:
@@ -50,4 +52,4 @@ Optional flags:
 
 ## Student setup
 
-Before class, share the Google Sheet link and ask students to paste their ngrok URL into the `ngrok_url` column next to their name. The dashboard picks up new entries on the next refresh.
+Before class, share the Google Sheet link and ask students to paste their base URL into the `URL` column next to their name. The dashboard picks up new entries on the next refresh.
